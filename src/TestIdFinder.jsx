@@ -76,8 +76,6 @@ function TestIdFinder({ children }) {
       }
       
       setRecordedEvents(prev => [...prev, eventData])
-      
-      event.stopPropagation()
     }
   }
 
