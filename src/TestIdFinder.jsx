@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 
 function TestIdFinder({ children }) {
   const [highlightedElement, setHighlightedElement] = useState(null)
+  const [recordedEvents, setRecordedEvents] = useState([])
+  const [isRecording, setIsRecording] = useState(false)
   const containerRef = useRef(null)
 
   const findClosestTestId = (element) => {
@@ -42,35 +44,174 @@ function TestIdFinder({ children }) {
     }
   }
 
+  const handleClick = (event) => {
+    if (!isRecording) return
+    
+    const target = event.target
+    const elementWithTestId = findClosestTestId(target)
+    
+    if (elementWithTestId) {
+      const testId = elementWithTestId.getAttribute('data-test-id')
+      const timestamp = new Date().toISOString()
+      const elementText = elementWithTestId.innerText?.trim() || ''
+      const tagName = elementWithTestId.tagName.toLowerCase()
+      const elementType = elementWithTestId.type || null
+      const rect = elementWithTestId.getBoundingClientRect()
+      
+      const eventData = {
+        id: Date.now() + Math.random(),
+        timestamp,
+        testId,
+        elementText,
+        tagName,
+        elementType,
+        position: {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2
+        },
+        clickPosition: {
+          x: event.clientX,
+          y: event.clientY
+        }
+      }
+      
+      setRecordedEvents(prev => [...prev, eventData])
+      
+      event.stopPropagation()
+    }
+  }
+
+  const toggleRecording = () => {
+    setIsRecording(!isRecording)
+  }
+
+  const clearEvents = () => {
+    setRecordedEvents([])
+  }
+
   useEffect(() => {
     const container = containerRef.current
     if (container) {
       container.addEventListener('mousemove', handleMouseMove)
       container.addEventListener('mouseleave', handleMouseLeave)
+      container.addEventListener('click', handleClick, true)
       
       return () => {
         container.removeEventListener('mousemove', handleMouseMove)
         container.removeEventListener('mouseleave', handleMouseLeave)
+        container.removeEventListener('click', handleClick, true)
         if (highlightedElement) {
           highlightedElement.style.outline = ''
           highlightedElement.style.outlineOffset = ''
         }
       }
     }
-  }, [highlightedElement])
+  }, [highlightedElement, isRecording])
 
   return (
     <div ref={containerRef} style={{ minHeight: '100vh' }}>
       {children}
-      {highlightedElement && (
+      
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '10px',
+        background: 'rgba(0, 0, 0, 0.9)',
+        color: 'white',
+        padding: '12px',
+        borderRadius: '8px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        zIndex: 1000,
+        minWidth: '200px'
+      }}>
+        <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Event Recording</div>
+        <div style={{ marginBottom: '8px' }}>
+          <button
+            onClick={toggleRecording}
+            style={{
+              background: isRecording ? '#ff4444' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginRight: '8px',
+              fontSize: '11px'
+            }}
+          >
+            {isRecording ? 'Stop' : 'Start'} Recording
+          </button>
+          <button
+            onClick={clearEvents}
+            style={{
+              background: '#666',
+              color: 'white',
+              border: 'none',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px'
+            }}
+          >
+            Clear ({recordedEvents.length})
+          </button>
+        </div>
+        {isRecording && (
+          <div style={{ color: '#ff4444' }}>● Recording clicks...</div>
+        )}
+      </div>
+
+      {recordedEvents.length > 0 && (
         <div style={{
           position: 'fixed',
           top: '10px',
           right: '10px',
-          background: 'rgba(255, 0, 0, 0.9)',
+          background: 'rgba(0, 0, 0, 0.9)',
           color: 'white',
-          padding: '8px 12px',
-          borderRadius: '4px',
+          padding: '12px',
+          borderRadius: '8px',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          zIndex: 1000,
+          maxWidth: '400px',
+          maxHeight: '400px',
+          overflowY: 'auto'
+        }}>
+          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Recorded Events ({recordedEvents.length})</div>
+          {recordedEvents.slice(-10).map((event) => (
+            <div key={event.id} style={{ 
+              marginBottom: '8px', 
+              padding: '6px', 
+              background: 'rgba(255, 255, 255, 0.1)', 
+              borderRadius: '4px',
+              fontSize: '10px'
+            }}>
+              <div style={{ color: '#4CAF50' }}>test-id: {event.testId}</div>
+              <div style={{ opacity: 0.8 }}>time: {new Date(event.timestamp).toLocaleTimeString()}</div>
+              <div style={{ opacity: 0.8 }}>element: {event.tagName}{event.elementType ? `[${event.elementType}]` : ''}</div>
+              {event.elementText && (
+                <div style={{ opacity: 0.8 }}>text: "{event.elementText.length > 30 ? event.elementText.substring(0, 30) + '...' : event.elementText}"</div>
+              )}
+            </div>
+          ))}
+          {recordedEvents.length > 10 && (
+            <div style={{ opacity: 0.6, textAlign: 'center' }}>
+              ... showing last 10 events
+            </div>
+          )}
+        </div>
+      )}
+
+      {highlightedElement && (
+        <div style={{
+          position: 'fixed',
+          bottom: '10px',
+          right: '10px',
+          background: 'rgba(0, 0, 0, 0.9)',
+          color: 'white',
+          padding: '12px',
+          borderRadius: '8px',
           fontSize: '12px',
           fontFamily: 'monospace',
           zIndex: 1000,
@@ -78,12 +219,13 @@ function TestIdFinder({ children }) {
           maxWidth: '300px',
           wordBreak: 'break-word'
         }}>
-          <div>data-test-id: {highlightedElement.getAttribute('data-test-id')}</div>
+          <div style={{ marginBottom: '4px', fontWeight: 'bold', color: '#ff6b6b' }}>Element Info</div>
+          <div style={{ color: '#4CAF50' }}>data-test-id: {highlightedElement.getAttribute('data-test-id')}</div>
           {(() => {
             const text = highlightedElement.innerText?.trim()
             if (text && text.length > 0) {
               const truncatedText = text.length > 100 ? text.substring(0, 100) + '...' : text
-              return <div style={{ marginTop: '4px', opacity: 0.9 }}>text: "{truncatedText}"</div>
+              return <div style={{ marginTop: '4px', opacity: 0.8 }}>text: "{truncatedText}"</div>
             }
             return null
           })()}

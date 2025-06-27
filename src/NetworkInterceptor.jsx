@@ -126,37 +126,51 @@ function NetworkInterceptor({ children }) {
         <div style={{
           position: 'fixed',
           top: '10px',
-          left: '10px',
-          background: 'rgba(0, 0, 255, 0.9)',
+          left: '250px',
+          background: 'rgba(0, 0, 0, 0.9)',
           color: 'white',
-          padding: '10px',
-          borderRadius: '4px',
+          padding: '12px',
+          borderRadius: '8px',
           fontSize: '12px',
-          zIndex: 1000
+          fontFamily: 'monospace',
+          zIndex: 1000,
+          minWidth: '200px'
         }}>
-          <div>Network Recording: {isRecording ? 'ON' : 'OFF'}</div>
-          <div>Events: {networkEvents.length}</div>
-          <div style={{ marginTop: '5px' }}>
+          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Network Recording</div>
+          <div style={{ marginBottom: '8px' }}>
             <button
               onClick={isRecording ? stopRecording : startRecording}
               style={{
-                marginRight: '5px',
-                padding: '2px 6px',
-                fontSize: '10px'
+                background: isRecording ? '#ff4444' : '#2196F3',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginRight: '8px',
+                fontSize: '11px'
               }}
             >
-              {isRecording ? 'Stop' : 'Start'}
+              {isRecording ? 'Stop' : 'Start'} Recording
             </button>
             <button
               onClick={clearEvents}
               style={{
-                padding: '2px 6px',
-                fontSize: '10px'
+                background: '#666',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '11px'
               }}
             >
-              Clear
+              Clear ({networkEvents.length})
             </button>
           </div>
+          {isRecording && (
+            <div style={{ color: '#2196F3' }}>● Recording network...</div>
+          )}
         </div>
 
         {/* Network events log */}

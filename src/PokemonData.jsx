@@ -6,6 +6,7 @@ function PokemonData() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedUserId, setSelectedUserId] = useState(1)
+  const [postsExpanded, setPostsExpanded] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -121,41 +122,67 @@ function PokemonData() {
       )}
 
       <div data-test-id="user-posts">
-        <h3 data-test-id="posts-title">Posts by {selectedUser?.name} ({posts.length})</h3>
-        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-          {posts.map((post, index) => (
-            <div 
-              key={post.id}
-              data-test-id={`post-${index}`}
-              style={{
-                backgroundColor: 'white',
-                padding: '15px',
-                marginBottom: '10px',
-                borderRadius: '6px',
-                border: '1px solid #eee'
-              }}
-            >
-              <h4 data-test-id={`post-title-${index}`} style={{ 
-                marginTop: 0, 
-                marginBottom: '10px',
-                color: '#444',
-                textTransform: 'capitalize'
-              }}>
-                {post.title}
-              </h4>
-              <p data-test-id={`post-body-${index}`} style={{ 
-                margin: 0, 
-                lineHeight: '1.5',
-                color: '#666'
-              }}>
-                {post.body}
-              </p>
-              <div style={{ marginTop: '10px', fontSize: '12px', color: '#999' }}>
-                <span data-test-id={`post-id-${index}`}>Post ID: {post.id}</span>
-              </div>
-            </div>
-          ))}
+        <div 
+          data-test-id={postsExpanded ? "posts-header-expanded" : "posts-header-collapsed"}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            cursor: 'pointer',
+            marginBottom: postsExpanded ? '15px' : '0'
+          }}
+          onClick={() => setPostsExpanded(!postsExpanded)}
+        >
+          <span 
+            data-test-id={postsExpanded ? "posts-toggle-expanded" : "posts-toggle-collapsed"}
+            style={{ 
+              marginRight: '8px', 
+              fontSize: '16px',
+              userSelect: 'none'
+            }}
+          >
+            {postsExpanded ? '▼' : '▶'}
+          </span>
+          <h3 data-test-id="posts-title" style={{ margin: 0 }}>
+            Posts by {selectedUser?.name} ({posts.length})
+          </h3>
         </div>
+        
+        {postsExpanded && (
+          <div data-test-id="posts-content" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {posts.map((post, index) => (
+              <div 
+                key={post.id}
+                data-test-id={`post-${index}`}
+                style={{
+                  backgroundColor: 'white',
+                  padding: '15px',
+                  marginBottom: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #eee'
+                }}
+              >
+                <h4 data-test-id={`post-title-${index}`} style={{ 
+                  marginTop: 0, 
+                  marginBottom: '10px',
+                  color: '#444',
+                  textTransform: 'capitalize'
+                }}>
+                  {post.title}
+                </h4>
+                <p data-test-id={`post-body-${index}`} style={{ 
+                  margin: 0, 
+                  lineHeight: '1.5',
+                  color: '#666'
+                }}>
+                  {post.body}
+                </p>
+                <div style={{ marginTop: '10px', fontSize: '12px', color: '#999' }}>
+                  <span data-test-id={`post-id-${index}`}>Post ID: {post.id}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -4,7 +4,8 @@
       "Bash(mkdir:*)",
       "Bash(deno task:*)",
       "Bash(deno install:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
