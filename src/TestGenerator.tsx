@@ -1,8 +1,41 @@
 import { useState } from "react";
-import { generateTestSuite } from "./testGenerator.js";
+import { generateTestSuite } from "./testGenerator.ts";
 
-function TestGenerator({ eventHistory, networkHistory }) {
-  const [generatedTest, setGeneratedTest] = useState(null);
+interface EventHistoryItem {
+  id: string | number;
+  timestamp: string;
+  testId: string;
+  elementText: string;
+  tagName: string;
+  elementType?: string | null;
+}
+
+interface NetworkHistoryItem {
+  id: string;
+  type: "network-request" | "network-response" | "network-error";
+  method?: string;
+  url: string;
+  timestamp: number;
+}
+
+interface TestGeneratorProps {
+  eventHistory: EventHistoryItem[];
+  networkHistory: NetworkHistoryItem[];
+}
+
+interface GeneratedTestSuite {
+  testCode: string;
+  mswHandlers: string;
+  summary: {
+    totalEvents: number;
+    totalNetworkCalls: number;
+    uniqueTestIds: string[];
+    uniqueEndpoints: string[];
+  };
+}
+
+function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
+  const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(null);
   const [showOutput, setShowOutput] = useState(false);
   const [testOptions, setTestOptions] = useState({
     testName: "User interaction flow test",
@@ -23,7 +56,7 @@ function TestGenerator({ eventHistory, networkHistory }) {
     setShowOutput(true);
   };
 
-  const copyToClipboard = (text, type) => {
+  const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text).then(() => {
       alert(`${type} copied to clipboard!`);
     }).catch(() => {
@@ -31,7 +64,7 @@ function TestGenerator({ eventHistory, networkHistory }) {
     });
   };
 
-  const downloadFile = (content, filename) => {
+  const downloadFile = (content: string, filename: string) => {
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

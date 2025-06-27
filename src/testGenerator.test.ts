@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { generateTest, generateTestSuite } from "./testGenerator.js";
+import { generateTest, generateTestSuite } from "./testGenerator.ts";
 
 Deno.test("generateTest - basic click and network flow", () => {
   const eventHistory = [
@@ -16,7 +16,7 @@ Deno.test("generateTest - basic click and network flow", () => {
   const networkHistory = [
     {
       id: "req-1",
-      type: "network-request",
+      type: "network-request" as const,
       method: "POST",
       url: "https://api.example.com/submit",
       timestamp: 1704110400100,
@@ -27,7 +27,7 @@ Deno.test("generateTest - basic click and network flow", () => {
     },
     {
       id: "req-1",
-      type: "network-response",
+      type: "network-response" as const,
       status: 201,
       url: "https://api.example.com/submit",
       timestamp: 1704110400200,
@@ -77,7 +77,7 @@ Deno.test("generateTest - GET request without body", () => {
   const networkHistory = [
     {
       id: "req-1",
-      type: "network-request",
+      type: "network-request" as const,
       method: "GET",
       url: "https://api.example.com/data?page=1&limit=10",
       timestamp: 1704110400100,
@@ -88,7 +88,7 @@ Deno.test("generateTest - GET request without body", () => {
     },
     {
       id: "req-1",
-      type: "network-response",
+      type: "network-response" as const,
       status: 200,
       url: "https://api.example.com/data?page=1&limit=10",
       timestamp: 1704110400200,
@@ -115,18 +115,20 @@ Deno.test("generateTest - GET request without body", () => {
 });
 
 Deno.test("generateTest - POST request with body validation", () => {
-  const eventHistory = [];
+  const eventHistory: never[] = [];
   const networkHistory = [
     {
       id: "req-1",
-      type: "network-response",
+      type: "network-response" as const,
       status: 201,
       url: "https://api.example.com/users",
       timestamp: 1704110400200,
       response: {
+        headers: { "Content-Type": "application/json" },
         data: { id: 456, name: "John Doe" },
       },
       request: {
+        headers: { "Content-Type": "application/json" },
         body: '{"name":"John Doe","email":"john@example.com"}',
       },
       method: "POST",
@@ -171,20 +173,26 @@ Deno.test("generateTest - multiple events in sequence", () => {
   const networkHistory = [
     {
       id: "req-1",
-      type: "network-response",
+      type: "network-response" as const,
       status: 200,
       url: "https://api.example.com/first",
       timestamp: 1704110400500,
-      response: { data: { step: 1 } },
+      response: { 
+        headers: { "Content-Type": "application/json" },
+        data: { step: 1 } 
+      },
       method: "GET",
     },
     {
       id: "req-2",
-      type: "network-response",
+      type: "network-response" as const,
       status: 200,
       url: "https://api.example.com/second",
       timestamp: 1704110402500,
-      response: { data: { step: 2 } },
+      response: { 
+        headers: { "Content-Type": "application/json" },
+        data: { step: 2 } 
+      },
       method: "GET",
     },
   ];
@@ -225,18 +233,21 @@ Deno.test("generateTestSuite - includes summary", () => {
   const networkHistory = [
     {
       id: "req-1",
-      type: "network-request",
+      type: "network-request" as const,
       method: "GET",
       url: "https://api.example.com/data",
       timestamp: 1704110400100,
     },
     {
       id: "req-1",
-      type: "network-response",
+      type: "network-response" as const,
       status: 200,
       url: "https://api.example.com/data",
       timestamp: 1704110400200,
-      response: { data: [] },
+      response: { 
+        headers: { "Content-Type": "application/json" },
+        data: [] 
+      },
       method: "GET",
     },
   ];

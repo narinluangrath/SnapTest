@@ -1,15 +1,36 @@
 import { useEffect, useRef, useState } from "react";
-import { useNetworkEvents } from "./NetworkInterceptor.jsx";
-import TestGenerator from "./TestGenerator.jsx";
+import { useNetworkEvents } from "./NetworkInterceptor.tsx";
+import TestGenerator from "./TestGenerator.tsx";
 
-function TestIdFinder({ children }) {
-  const [highlightedElement, setHighlightedElement] = useState(null);
-  const [recordedEvents, setRecordedEvents] = useState([]);
+interface TestIdFinderProps {
+  children: React.ReactNode;
+}
+
+interface RecordedEvent {
+  id: number;
+  timestamp: string;
+  testId: string;
+  elementText: string;
+  tagName: string;
+  elementType?: string | null;
+  position: {
+    x: number;
+    y: number;
+  };
+  clickPosition: {
+    x: number;
+    y: number;
+  };
+}
+
+function TestIdFinder({ children }: TestIdFinderProps) {
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+  const [recordedEvents, setRecordedEvents] = useState<RecordedEvent[]>([]);
   const [isRecording, setIsRecording] = useState(false);
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { networkEvents } = useNetworkEvents();
 
-  const findClosestTestId = (element) => {
+  const findClosestTestId = (element: Element): Element | null => {
     let current = element;
     while (current && current !== document.body) {
       if (current.getAttribute && current.getAttribute("data-test-id")) {
@@ -20,19 +41,19 @@ function TestIdFinder({ children }) {
     return null;
   };
 
-  const handleMouseMove = (event) => {
-    const target = event.target;
+  const handleMouseMove = (event: MouseEvent) => {
+    const target = event.target as Element;
     const elementWithTestId = findClosestTestId(target);
 
     if (elementWithTestId !== highlightedElement) {
       if (highlightedElement) {
-        highlightedElement.style.outline = "";
-        highlightedElement.style.outlineOffset = "";
+        (highlightedElement as HTMLElement).style.outline = "";
+        (highlightedElement as HTMLElement).style.outlineOffset = "";
       }
 
       if (elementWithTestId) {
-        elementWithTestId.style.outline = "2px solid red";
-        elementWithTestId.style.outlineOffset = "2px";
+        (elementWithTestId as HTMLElement).style.outline = "2px solid red";
+        (elementWithTestId as HTMLElement).style.outlineOffset = "2px";
       }
 
       setHighlightedElement(elementWithTestId);
@@ -47,10 +68,10 @@ function TestIdFinder({ children }) {
     }
   };
 
-  const handleClick = (event) => {
+  const handleClick = (event: React.MouseEvent) => {
     if (!isRecording) return;
 
-    const target = event.target;
+    const target = event.target as Element;
     const elementWithTestId = findClosestTestId(target);
 
     if (elementWithTestId) {
