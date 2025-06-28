@@ -7,7 +7,9 @@
       "Bash(timeout:*)",
       "Bash(git add:*)",
       "Bash(git clean:*)",
-      "Bash(git revert:*)"
+      "Bash(git revert:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }
