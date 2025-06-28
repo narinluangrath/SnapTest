@@ -5,10 +5,16 @@ automatically generates React Testing Library tests with MSW mocks.
 
 ## 🚀 Quick Start
 
-**Just copy `src/SnapTest.tsx` into your project and wrap your app:**
+**Copy `src/SnapTest.tsx` into your project, then wrap your app:**
+
+```bash
+# Copy the SnapTest framework file
+curl -o src/SnapTest.tsx https://raw.githubusercontent.com/narinluangrath/SnapTest/main/src/SnapTest.tsx
+```
 
 ```tsx
-import { SnapTestProvider } from "./SnapTest";
+// In your main App component
+import { SnapTestProvider } from "./src/SnapTest";
 import YourApp from "./YourApp";
 
 function App() {
@@ -73,9 +79,9 @@ That's it! The framework will overlay recording controls on your app.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { rest } from "msw";
 import { server } from "../mocks/server";
-import MyComponent from "./MyComponent";
+import UserProfile from "./UserProfile";
 
-describe("MyComponent Integration Tests", () => {
+describe("UserProfile Integration Tests", () => {
   beforeEach(() => {
     server.listen();
   });
@@ -88,26 +94,35 @@ describe("MyComponent Integration Tests", () => {
     server.close();
   });
 
-  test("should handle user interactions correctly", async () => {
-    render(<MyComponent />);
+  test("should load user data when button clicked", async () => {
+    // Setup mock BEFORE rendering
+    server.use(
+      rest.get("*/api/users/1", (req, res, ctx) => {
+        return res(
+          ctx.status(200),
+          ctx.json({ id: 1, name: "John Doe", email: "john@example.com" }),
+        );
+      }),
+    );
 
-    // Step 1: Click submit-button
-    const submitButton = await screen.findByTestId("submit-button");
-    fireEvent.click(submitButton);
+    render(<UserProfile />);
 
-    // Step 2: Assert loading-text text content
-    expect(await screen.findByTestId("loading-text")).toHaveTextContent(
+    // Step 1: Click load-user button
+    const loadButton = await screen.findByTestId("load-user-button");
+    fireEvent.click(loadButton);
+
+    // Step 2: Assert loading state appears
+    expect(await screen.findByTestId("loading-spinner")).toHaveTextContent(
       "Loading...",
     );
 
-    // Step 3: Setup mock for triggered request
-    server.use(
-      rest.post("*/api/submit", (req, res, ctx) => {
-        return res(
-          ctx.status(200),
-          ctx.json({ success: true }),
-        );
-      }),
+    // Step 3: Wait for data to load and assert final state
+    await waitFor(() => {
+      expect(screen.getByTestId("user-name")).toHaveTextContent("John Doe");
+    });
+
+    expect(await screen.findByTestId("user-email")).toHaveTextContent(
+      "john@example.com",
     );
   });
 });
