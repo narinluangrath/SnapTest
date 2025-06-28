@@ -123,8 +123,7 @@ describe("MyComponent Integration Tests", () => {
 
 **Core Components:**
 
-- **TestGeneratorProvider**: Unified provider that combines element
-  highlighting, network interception, and test generation
+- **TestGeneratorProvider**: Unified provider that combines element highlighting, network interception, and test generation
 - **Element Recording**: Mouse hover highlighting and click/assertion recording
 - **Network Recording**: Automatic fetch() request capture and mocking
 - **Test Generation**: Complete test code generation and export
