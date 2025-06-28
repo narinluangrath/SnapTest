@@ -878,6 +878,48 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
           </div>
         )}
 
+        {networkEvents.length > 0 && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: "10px",
+              left: "10px",
+              right: "10px",
+              maxHeight: "200px",
+              background: "rgba(0, 0, 0, 0.9)",
+              color: "white",
+              padding: "10px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              fontFamily: "monospace",
+              overflow: "auto",
+              zIndex: 999,
+            }}
+          >
+            <div>
+              <strong>Network Events Log:</strong>
+            </div>
+            {networkEvents.map((event, index) => (
+              <div key={index} style={{ marginBottom: "5px" }}>
+                {event.type === "network-request"
+                  ? (
+                    <span style={{ color: "#87CEEB" }}>
+                      → {event.method} {event.url}
+                    </span>
+                  )
+                  : (
+                    <span style={{ color: "#90EE90" }}>
+                      ← {event.status} (Response)
+                    </span>
+                  )}
+                <span style={{ color: "#ddd", marginLeft: "10px" }}>
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <TestGenerator />
       </div>
     </TestGeneratorContext.Provider>
