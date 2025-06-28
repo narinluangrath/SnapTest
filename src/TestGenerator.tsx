@@ -456,6 +456,28 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
     if (!isEventRecording) return;
 
     const target = event.target as Element;
+
+    // Check if click is within any framework UI panel
+    const isWithinFrameworkUI = (element: Element): boolean => {
+      let current = element;
+      while (current && current !== document.body) {
+        if (current instanceof HTMLElement) {
+          const style = window.getComputedStyle(current);
+          // Check if element has framework UI styling (fixed position with high z-index)
+          if (style.position === "fixed" && parseInt(style.zIndex) >= 999) {
+            return true;
+          }
+        }
+        current = current.parentElement;
+      }
+      return false;
+    };
+
+    // Ignore clicks within framework UI panels
+    if (isWithinFrameworkUI(target)) {
+      return;
+    }
+
     const elementWithTestId = findClosestTestId(target);
 
     if (elementWithTestId) {
