@@ -209,11 +209,12 @@ function generateTestCode(
 
         if (hasBody) {
           testSteps.push(`
-    // Step ${stepNumber}: Setup mock for triggered request
+    // Step ${stepNumber}: Setup mock for triggered request with body validation
+    let capturedRequestBody: string | null = null
     server.use(
       rest.${method}('*${fullPath}', async (req, res, ctx) => {
-        const body = await req.text()
-        if (body === ${JSON.stringify(requestBody)}) {
+        capturedRequestBody = await req.text()
+        if (capturedRequestBody === ${JSON.stringify(requestBody)}) {
           return res(
             ctx.status(${nextEvent.status}),
             ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
@@ -223,15 +224,22 @@ function generateTestCode(
       })
     )
     
-    // Step ${stepNumber + 1}: Wait for network call to complete
+    // Step ${stepNumber + 1}: Wait for network call and validate request body
     await waitFor(() => {
-      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
+      expect(capturedRequestBody).toBe(${JSON.stringify(requestBody)})
     })`);
         } else {
           testSteps.push(`
-    // Step ${stepNumber}: Setup mock for triggered request
+    // Step ${stepNumber}: Setup mock for triggered request (no body expected)
+    let requestReceived = false
     server.use(
-      rest.${method}('*${fullPath}', (req, res, ctx) => {
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        requestReceived = true
+        const body = await req.text()
+        // Validate no body was sent when none was recorded
+        if (body !== '') {
+          return res(ctx.status(400), ctx.text('Unexpected request body'))
+        }
         return res(
           ctx.status(${nextEvent.status}),
           ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
@@ -239,9 +247,9 @@ function generateTestCode(
       })
     )
     
-    // Step ${stepNumber + 1}: Wait for network call to complete
+    // Step ${stepNumber + 1}: Wait for network call and validate no body sent
     await waitFor(() => {
-      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
+      expect(requestReceived).toBe(true)
     })`);
         }
         stepNumber += 2;
@@ -264,11 +272,12 @@ function generateTestCode(
 
       if (hasBody) {
         testSteps.push(`
-    // Step ${stepNumber}: Setup mock for background request
+    // Step ${stepNumber}: Setup mock for background request with body validation
+    let capturedBackgroundRequestBody: string | null = null
     server.use(
       rest.${method}('*${fullPath}', async (req, res, ctx) => {
-        const body = await req.text()
-        if (body === ${JSON.stringify(requestBody)}) {
+        capturedBackgroundRequestBody = await req.text()
+        if (capturedBackgroundRequestBody === ${JSON.stringify(requestBody)}) {
           return res(
             ctx.status(${event.status}),
             ctx.json(${JSON.stringify(event.response?.data, null, 8)})
@@ -276,18 +285,35 @@ function generateTestCode(
         }
         return res(ctx.status(400), ctx.text('Request body mismatch'))
       })
-    )`);
+    )
+    
+    // Validate background request body matches recording
+    await waitFor(() => {
+      expect(capturedBackgroundRequestBody).toBe(${JSON.stringify(requestBody)})
+    })`);
       } else {
         testSteps.push(`
-    // Step ${stepNumber}: Setup mock for background request
+    // Step ${stepNumber}: Setup mock for background request (no body expected)
+    let backgroundRequestReceived = false
     server.use(
-      rest.${method}('*${fullPath}', (req, res, ctx) => {
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        backgroundRequestReceived = true
+        const body = await req.text()
+        // Validate no body was sent when none was recorded
+        if (body !== '') {
+          return res(ctx.status(400), ctx.text('Unexpected request body'))
+        }
         return res(
           ctx.status(${event.status}),
           ctx.json(${JSON.stringify(event.response?.data, null, 8)})
         )
       })
-    )`);
+    )
+    
+    // Validate background request was made with no body
+    await waitFor(() => {
+      expect(backgroundRequestReceived).toBe(true)
+    })`);
       }
       stepNumber++;
     }
@@ -534,6 +560,71 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
   const stopNetworkRecording = () => setIsNetworkRecording(false);
   const clearNetworkEvents = () => setNetworkEvents([]);
 
+  // Draggable panel positions
+  const [eventPanelPosition, setEventPanelPosition] = useState({
+    x: 10,
+    y: 10,
+  });
+  const [networkPanelPosition, setNetworkPanelPosition] = useState({
+    x: 250,
+    y: 10,
+  });
+  const [eventLogPosition, setEventLogPosition] = useState({ x: 500, y: 10 });
+  const [elementInfoPosition, setElementInfoPosition] = useState({
+    x: 300,
+    y: 300,
+  });
+
+  // Drag handlers
+  const createDragHandler = (
+    setPosition: (pos: { x: number; y: number }) => void,
+  ) => {
+    return (event: React.MouseEvent) => {
+      // Don't start drag if clicking on a button or input
+      if (
+        (event.target as HTMLElement).tagName === "BUTTON" ||
+        (event.target as HTMLElement).tagName === "INPUT"
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startPos = {
+        x: event.currentTarget.getBoundingClientRect().left,
+        y: event.currentTarget.getBoundingClientRect().top,
+      };
+
+      const handleMouseMove = (e: MouseEvent) => {
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+        const newX = Math.max(
+          0,
+          Math.min((window.innerWidth || 1200) - 200, startPos.x + deltaX),
+        );
+        const newY = Math.max(
+          0,
+          Math.min((window.innerHeight || 800) - 100, startPos.y + deltaY),
+        );
+        setPosition({ x: newX, y: newY });
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+    };
+  };
+
+  const eventPanelDragHandler = createDragHandler(setEventPanelPosition);
+  const networkPanelDragHandler = createDragHandler(setNetworkPanelPosition);
+  const eventLogDragHandler = createDragHandler(setEventLogPosition);
+  const elementInfoDragHandler = createDragHandler(setElementInfoPosition);
+
   // Network interception effect
   useEffect(() => {
     if (!isNetworkRecording) return;
@@ -646,8 +737,8 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
         <div
           style={{
             position: "fixed",
-            top: "10px",
-            left: "10px",
+            top: `${eventPanelPosition.y}px`,
+            left: `${eventPanelPosition.x}px`,
             background: "rgba(0, 0, 0, 0.9)",
             color: "white",
             padding: "12px",
@@ -656,9 +747,20 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
             fontFamily: "monospace",
             zIndex: 1000,
             minWidth: "200px",
+            cursor: "move",
           }}
+          onMouseDown={eventPanelDragHandler}
         >
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+          <div
+            style={{
+              marginBottom: "8px",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <span style={{ cursor: "grab", userSelect: "none" }}>⋮⋮</span>
             Event Recording
           </div>
           <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
@@ -714,8 +816,8 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
         <div
           style={{
             position: "fixed",
-            top: "10px",
-            left: "250px",
+            top: `${networkPanelPosition.y}px`,
+            left: `${networkPanelPosition.x}px`,
             background: "rgba(0, 0, 0, 0.9)",
             color: "white",
             padding: "12px",
@@ -724,9 +826,20 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
             fontFamily: "monospace",
             zIndex: 1000,
             minWidth: "200px",
+            cursor: "move",
           }}
+          onMouseDown={networkPanelDragHandler}
         >
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+          <div
+            style={{
+              marginBottom: "8px",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <span style={{ cursor: "grab", userSelect: "none" }}>⋮⋮</span>
             Network Recording
           </div>
           <div style={{ marginBottom: "8px" }}>
@@ -771,8 +884,8 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
           <div
             style={{
               position: "fixed",
-              top: "10px",
-              right: "10px",
+              top: `${eventLogPosition.y}px`,
+              left: `${eventLogPosition.x}px`,
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
               padding: "12px",
@@ -783,9 +896,20 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               maxWidth: "400px",
               maxHeight: "400px",
               overflowY: "auto",
+              cursor: "move",
             }}
+            onMouseDown={eventLogDragHandler}
           >
-            <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+            <div
+              style={{
+                marginBottom: "8px",
+                fontWeight: "bold",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <span style={{ cursor: "grab", userSelect: "none" }}>⋮⋮</span>
               Recorded Events ({recordedEvents.length})
             </div>
             {recordedEvents.slice(-10).map((event) => (
@@ -835,8 +959,8 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
           <div
             style={{
               position: "fixed",
-              bottom: "10px",
-              right: "10px",
+              top: `${elementInfoPosition.y}px`,
+              left: `${elementInfoPosition.x}px`,
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
               padding: "12px",
@@ -844,18 +968,28 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               fontSize: "12px",
               fontFamily: "monospace",
               zIndex: 1000,
-              pointerEvents: "none",
+              pointerEvents: "auto",
               maxWidth: "300px",
               wordBreak: "break-word",
+              cursor: "move",
             }}
+            onMouseDown={elementInfoDragHandler}
           >
             <div
               style={{
                 marginBottom: "4px",
                 fontWeight: "bold",
                 color: "#ff6b6b",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
               }}
             >
+              <span
+                style={{ cursor: "grab", userSelect: "none", fontSize: "10px" }}
+              >
+                ⋮⋮
+              </span>
               Element Info
             </div>
             <div style={{ color: "#4CAF50" }}>
