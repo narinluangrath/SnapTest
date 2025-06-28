@@ -771,8 +771,9 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
           <div
             style={{
               position: "fixed",
-              top: "10px",
+              bottom: "10px",
               right: "10px",
+              left: "50%",
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
               padding: "12px",
@@ -780,8 +781,7 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               fontSize: "11px",
               fontFamily: "monospace",
               zIndex: 1000,
-              maxWidth: "400px",
-              maxHeight: "400px",
+              maxHeight: "200px",
               overflowY: "auto",
             }}
           >
@@ -884,7 +884,7 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               position: "fixed",
               bottom: "10px",
               left: "10px",
-              right: "10px",
+              right: recordedEvents.length > 0 ? "50%" : "10px",
               maxHeight: "200px",
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
