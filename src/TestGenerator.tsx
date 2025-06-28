@@ -38,9 +38,9 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
   const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(null);
   const [showOutput, setShowOutput] = useState(false);
   const [testOptions, setTestOptions] = useState({
-    testName: "User interaction flow test",
-    componentName: "PokemonData",
-    describe: "PokemonData Integration Tests",
+    testName: "should handle user interactions correctly",
+    componentName: "MyComponent",
+    describe: "MyComponent Integration Tests",
   });
 
   const handleGenerateTest = () => {
@@ -321,8 +321,7 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
                   <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
                     Test Code Preview:
                   </div>
-                  {generatedTest.testCode.substring(0, 500)}
-                  {generatedTest.testCode.length > 500 && "\n...(truncated)"}
+                  {generatedTest.testCode}
                 </div>
               </>
             )}

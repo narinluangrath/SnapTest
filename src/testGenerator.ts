@@ -92,9 +92,9 @@ export function generateTest(
   options: TestOptions = {}
 ): GeneratedTest {
   const {
-    testName = "Generated Integration Test",
-    componentName = "Component",
-    describe = "Integration Test",
+    testName = "should handle user interactions correctly",
+    componentName = "MyComponent",
+    describe = "MyComponent Integration Tests",
   } = options;
 
   // Combine and sort events by timestamp
@@ -171,26 +171,28 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
 
     if (hasBody) {
       handlers.push(`
-  http.${handler.method}('*${handler.fullPath}', async ({ request }) => {
-    const body = await request.text()
+  rest.${handler.method}('*${handler.fullPath}', async (req, res, ctx) => {
+    const body = await req.text()
     if (body === ${JSON.stringify(handler.requestBody)}) {
-      return HttpResponse.json(${JSON.stringify(handler.data, null, 4)}, {
-        status: ${handler.status}
-      })
+      return res(
+        ctx.status(${handler.status}),
+        ctx.json(${JSON.stringify(handler.data, null, 4)})
+      )
     }
-    return new Response('Request body mismatch', { status: 400 })
+    return res(ctx.status(400), ctx.text('Request body mismatch'))
   })`);
     } else {
       handlers.push(`
-  http.${handler.method}('*${handler.fullPath}', () => {
-    return HttpResponse.json(${JSON.stringify(handler.data, null, 4)}, {
-      status: ${handler.status}
-    })
+  rest.${handler.method}('*${handler.fullPath}', (req, res, ctx) => {
+    return res(
+      ctx.status(${handler.status}),
+      ctx.json(${JSON.stringify(handler.data, null, 4)})
+    )
   })`);
     }
   });
 
-  return `import { http, HttpResponse } from 'msw'
+  return `import { rest } from 'msw'
 
 export const handlers = [${handlers.join(",")}\n]`;
 }
@@ -201,7 +203,7 @@ function generateTestCode(
 ): string {
   const imports = [
     "import { render, screen, fireEvent, waitFor } from '@testing-library/react'",
-    "import { http, HttpResponse } from 'msw'",
+    "import { rest } from 'msw'",
     "import { server } from '../mocks/server'",
     `import ${componentName} from './${componentName}'`,
   ];
@@ -233,16 +235,15 @@ function generateTestCode(
           testSteps.push(`
     // Step ${stepNumber}: Setup mock for triggered request
     server.use(
-      http.${method}('*${fullPath}', async ({ request }) => {
-        const body = await request.text()
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        const body = await req.text()
         if (body === ${JSON.stringify(requestBody)}) {
-          return HttpResponse.json(${
-            JSON.stringify(nextEvent.response?.data, null, 8)
-          }, {
-            status: ${nextEvent.status}
-          })
+          return res(
+            ctx.status(${nextEvent.status}),
+            ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+          )
         }
-        return new Response('Request body mismatch', { status: 400 })
+        return res(ctx.status(400), ctx.text('Request body mismatch'))
       })
     )
     
@@ -255,12 +256,11 @@ function generateTestCode(
           testSteps.push(`
     // Step ${stepNumber}: Setup mock for triggered request
     server.use(
-      http.${method}('*${fullPath}', () => {
-        return HttpResponse.json(${
-            JSON.stringify(nextEvent.response?.data, null, 8)
-          }, {
-          status: ${nextEvent.status}
-        })
+      rest.${method}('*${fullPath}', (req, res, ctx) => {
+        return res(
+          ctx.status(${nextEvent.status}),
+          ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+        )
       })
     )
     
@@ -286,28 +286,26 @@ function generateTestCode(
         testSteps.push(`
     // Step ${stepNumber}: Setup mock for background request
     server.use(
-      http.${method}('*${fullPath}', async ({ request }) => {
-        const body = await request.text()
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        const body = await req.text()
         if (body === ${JSON.stringify(requestBody)}) {
-          return HttpResponse.json(${
-          JSON.stringify(event.response?.data, null, 8)
-        }, {
-            status: ${event.status}
-          })
+          return res(
+            ctx.status(${event.status}),
+            ctx.json(${JSON.stringify(event.response?.data, null, 8)})
+          )
         }
-        return new Response('Request body mismatch', { status: 400 })
+        return res(ctx.status(400), ctx.text('Request body mismatch'))
       })
     )`);
       } else {
         testSteps.push(`
     // Step ${stepNumber}: Setup mock for background request
     server.use(
-      http.${method}('*${fullPath}', () => {
-        return HttpResponse.json(${
-          JSON.stringify(event.response?.data, null, 8)
-        }, {
-          status: ${event.status}
-        })
+      rest.${method}('*${fullPath}', (req, res, ctx) => {
+        return res(
+          ctx.status(${event.status}),
+          ctx.json(${JSON.stringify(event.response?.data, null, 8)})
+        )
       })
     )`);
       }
