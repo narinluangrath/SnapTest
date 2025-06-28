@@ -25,7 +25,7 @@ interface Post {
   body: string;
 }
 
-function MockPokemonApp() {
+function MockUserApp() {
   const [users, setUsers] = useState<User[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,4 +278,4 @@ function MockPokemonApp() {
   );
 }
 
-export default MockPokemonApp;
+export default MockUserApp;
