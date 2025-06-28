@@ -44,11 +44,11 @@ SnapTest is **fully functional** and includes all core features:
 ```
 src/
 ├── App.tsx              # MockUserApp demo component
-├── TestGenerator.tsx    # Complete framework (all-in-one)
+├── SnapTest.tsx    # Complete framework (all-in-one)
 └── main.tsx             # Entry point
 ```
 
-**TestGenerator.tsx contains:**
+**SnapTest.tsx contains:**
 
 - TestIdFinder (element tracking & recording)
 - NetworkInterceptor (network recording)

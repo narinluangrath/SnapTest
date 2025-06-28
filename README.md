@@ -5,10 +5,10 @@ automatically generates React Testing Library tests with MSW mocks.
 
 ## 🚀 Quick Start
 
-**Just copy `src/TestGenerator.tsx` into your project and wrap your app:**
+**Just copy `src/SnapTest.tsx` into your project and wrap your app:**
 
 ```tsx
-import { SnapTestProvider } from "./TestGenerator";
+import { SnapTestProvider } from "./SnapTest";
 import YourApp from "./YourApp";
 
 function App() {
@@ -117,7 +117,7 @@ describe("MyComponent Integration Tests", () => {
 
 **Single File Solution:**
 
-- `TestGenerator.tsx` contains everything needed
+- `SnapTest.tsx` contains everything needed
 - No external dependencies beyond React and MSW
 - Fully self-contained with inline UI components
 
