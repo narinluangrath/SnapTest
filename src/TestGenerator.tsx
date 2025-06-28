@@ -1,4 +1,11 @@
-import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 // Test Generation Logic (from testGenerator.ts)
 interface TestOptions {
@@ -28,7 +35,12 @@ interface CombinedEvent {
     x: number;
     y: number;
   };
-  type: "click" | "assertion" | "network-request" | "network-response" | "network-error";
+  type:
+    | "click"
+    | "assertion"
+    | "network-request"
+    | "network-response"
+    | "network-error";
   method?: string;
   url?: string;
   request?: {
@@ -55,7 +67,7 @@ interface GeneratedTestSuite extends GeneratedTest {
 function generateTest(
   eventHistory: EventHistoryItem[],
   networkHistory: NetworkHistoryItem[],
-  options: TestOptions = {}
+  options: TestOptions = {},
 ): GeneratedTest {
   const {
     testName = "should handle user interactions correctly",
@@ -76,7 +88,10 @@ function generateTest(
       tagName: "",
       elementType: null,
       timestamp: event.timestamp,
-      type: event.type as "network-request" | "network-response" | "network-error",
+      type: event.type as
+        | "network-request"
+        | "network-response"
+        | "network-error",
       method: event.method,
       url: event.url,
       request: event.request,
@@ -178,7 +193,9 @@ function generateTestCode(
     if (event.type === "click") {
       testSteps.push(`
     // Step ${stepNumber}: Click ${event.testId}
-    const ${camelCase(event.testId)} = await screen.findByTestId('${event.testId}')
+    const ${
+        camelCase(event.testId)
+      } = await screen.findByTestId('${event.testId}')
     fireEvent.click(${camelCase(event.testId)})`);
       stepNumber++;
 
@@ -233,7 +250,9 @@ function generateTestCode(
     } else if (event.type === "assertion") {
       testSteps.push(`
     // Step ${stepNumber}: Assert ${event.testId} text content
-    expect(await screen.findByTestId('${event.testId}')).toHaveTextContent('${event.elementText.replace(/'/g, "\\'")}')`);
+    expect(await screen.findByTestId('${event.testId}')).toHaveTextContent('${
+        event.elementText.replace(/'/g, "\\'")
+      }')`);
       stepNumber++;
     } else if (event.type === "network-response" && event.url) {
       const method = (event.method || "GET").toLowerCase();
@@ -307,7 +326,7 @@ function camelCase(str: string): string {
 export function generateTestSuite(
   eventHistory: EventHistoryItem[],
   networkHistory: NetworkHistoryItem[],
-  options: TestOptions = {}
+  options: TestOptions = {},
 ): GeneratedTestSuite {
   const result = generateTest(eventHistory, networkHistory, options);
 
@@ -329,8 +348,8 @@ export function generateTestSuite(
   };
 }
 
-// TestIdFinder Logic (from TestIdFinder.tsx)
-interface TestIdFinderProps {
+// Combined TestGeneratorProvider Logic
+interface TestGeneratorProviderProps {
   children: React.ReactNode;
 }
 
@@ -352,13 +371,48 @@ interface RecordedEvent {
   };
 }
 
-function TestIdFinder({ children }: TestIdFinderProps) {
-  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+interface TestGeneratorContextType {
+  networkEvents: NetworkEvent[];
+  isNetworkRecording: boolean;
+  startNetworkRecording: () => void;
+  stopNetworkRecording: () => void;
+  clearNetworkEvents: () => void;
+  recordedEvents: RecordedEvent[];
+  isEventRecording: boolean;
+  startEventRecording: () => void;
+  stopEventRecording: () => void;
+  clearEvents: () => void;
+}
+
+const TestGeneratorContext = createContext<TestGeneratorContextType | null>(
+  null,
+);
+
+export const useTestGenerator = () => {
+  const context = useContext(TestGeneratorContext);
+  if (!context) {
+    throw new Error(
+      "useTestGenerator must be used within a TestGeneratorProvider",
+    );
+  }
+  return context;
+};
+
+function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
+  // Network recording state
+  const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
+  const [isNetworkRecording, setIsNetworkRecording] = useState(false);
+
+  // Event recording state
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(
+    null,
+  );
   const [recordedEvents, setRecordedEvents] = useState<RecordedEvent[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [assertionHighlight, setAssertionHighlight] = useState<Element | null>(null);
+  const [isEventRecording, setIsEventRecording] = useState(false);
+  const [assertionHighlight, setAssertionHighlight] = useState<Element | null>(
+    null,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
-  const { networkEvents } = useNetworkEvents();
 
   const findClosestTestId = (element: Element): Element | null => {
     let current = element;
@@ -399,7 +453,7 @@ function TestIdFinder({ children }: TestIdFinderProps) {
   };
 
   const handleClick = (event: React.MouseEvent) => {
-    if (!isRecording) return;
+    if (!isEventRecording) return;
 
     const target = event.target as Element;
     const elementWithTestId = findClosestTestId(target);
@@ -414,11 +468,11 @@ function TestIdFinder({ children }: TestIdFinderProps) {
 
       if (event.ctrlKey) {
         event.stopPropagation();
-        
+
         setAssertionHighlight(elementWithTestId);
         (elementWithTestId as HTMLElement).style.outline = "3px solid orange";
         (elementWithTestId as HTMLElement).style.outlineOffset = "3px";
-        
+
         setTimeout(() => {
           (elementWithTestId as HTMLElement).style.outline = "";
           (elementWithTestId as HTMLElement).style.outlineOffset = "";
@@ -469,135 +523,20 @@ function TestIdFinder({ children }: TestIdFinderProps) {
     }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-  };
+  const startEventRecording = () => setIsEventRecording(true);
+  const stopEventRecording = () => setIsEventRecording(false);
+  const clearEvents = () => setRecordedEvents([]);
 
-  const clearEvents = () => {
-    setRecordedEvents([]);
+  const startNetworkRecording = () => {
+    setNetworkEvents([]);
+    setIsNetworkRecording(true);
   };
+  const stopNetworkRecording = () => setIsNetworkRecording(false);
+  const clearNetworkEvents = () => setNetworkEvents([]);
 
+  // Network interception effect
   useEffect(() => {
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener("mousemove", handleMouseMove);
-      container.addEventListener("mouseleave", handleMouseLeave);
-      container.addEventListener("click", handleClick, true);
-
-      return () => {
-        container.removeEventListener("mousemove", handleMouseMove);
-        container.removeEventListener("mouseleave", handleMouseLeave);
-        container.removeEventListener("click", handleClick, true);
-        if (highlightedElement) {
-          highlightedElement.style.outline = "";
-          highlightedElement.style.outlineOffset = "";
-        }
-      };
-    }
-  }, [highlightedElement, isRecording]);
-
-  return (
-    <div ref={containerRef} style={{ minHeight: "100vh" }}>
-      {children}
-
-      <div style={{ position: "fixed", top: "10px", left: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, minWidth: "200px" }}>
-        <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Event Recording</div>
-        <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
-          Events: {recordedEvents.filter(e => e.type === "click").length} | Assertions: {recordedEvents.filter(e => e.type === "assertion").length}
-        </div>
-        <div style={{ marginBottom: "8px" }}>
-          <button onClick={toggleRecording} style={{ background: isRecording ? "#ff4444" : "#4CAF50", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", marginRight: "8px", fontSize: "11px" }}>
-            {isRecording ? "Stop" : "Start"} Recording
-          </button>
-          <button onClick={clearEvents} style={{ background: "#666", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>
-            Clear ({recordedEvents.length})
-          </button>
-        </div>
-        {isRecording && <div style={{ color: "#ff4444" }}>● Recording clicks...</div>}
-        {isRecording && <div style={{ color: "#888", fontSize: "10px", marginTop: "4px" }}>Ctrl+Click for assertions</div>}
-      </div>
-
-      {recordedEvents.length > 0 && (
-        <div style={{ position: "fixed", top: "10px", right: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "11px", fontFamily: "monospace", zIndex: 1000, maxWidth: "400px", maxHeight: "400px", overflowY: "auto" }}>
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Recorded Events ({recordedEvents.length})</div>
-          {recordedEvents.slice(-10).map((event) => (
-            <div key={event.id} style={{ marginBottom: "8px", padding: "6px", background: "rgba(255, 255, 255, 0.1)", borderRadius: "4px", fontSize: "10px" }}>
-              <div style={{ color: event.type === "assertion" ? "#FF9800" : "#4CAF50" }}>
-                {event.type === "assertion" ? "assertion" : "click"}: {event.testId}
-              </div>
-              <div style={{ opacity: 0.8 }}>time: {new Date(event.timestamp).toLocaleTimeString()}</div>
-              <div style={{ opacity: 0.8 }}>element: {event.tagName}{event.elementType ? `[${event.elementType}]` : ""}</div>
-              {event.elementText && (
-                <div style={{ opacity: 0.8 }}>
-                  text: "{event.elementText.length > 30 ? event.elementText.substring(0, 30) + "..." : event.elementText}"
-                </div>
-              )}
-            </div>
-          ))}
-          {recordedEvents.length > 10 && <div style={{ opacity: 0.6, textAlign: "center" }}>... showing last 10 events</div>}
-        </div>
-      )}
-
-      {highlightedElement && (
-        <div style={{ position: "fixed", bottom: "10px", right: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, pointerEvents: "none", maxWidth: "300px", wordBreak: "break-word" }}>
-          <div style={{ marginBottom: "4px", fontWeight: "bold", color: "#ff6b6b" }}>Element Info</div>
-          <div style={{ color: "#4CAF50" }}>data-test-id: {highlightedElement.getAttribute("data-test-id")}</div>
-          {(() => {
-            const text = highlightedElement.innerText?.trim();
-            if (text && text.length > 0) {
-              const truncatedText = text.length > 100 ? text.substring(0, 100) + "..." : text;
-              return (
-                <div style={{ marginTop: "4px", opacity: 0.8 }}>text: "{truncatedText}"</div>
-              );
-            }
-            return null;
-          })()}
-        </div>
-      )}
-
-      <TestGenerator eventHistory={recordedEvents} networkHistory={networkEvents} />
-    </div>
-  );
-}
-
-interface NetworkEvent {
-  id: string;
-  type: "network-request" | "network-response" | "network-error";
-  method?: string;
-  url: string;
-  timestamp: number;
-  status?: number;
-  request?: {
-    body: string | null;
-  };
-  response?: {
-    data: unknown;
-  };
-  error?: string;
-}
-
-interface NetworkContextType {
-  networkEvents: NetworkEvent[];
-  isRecording: boolean;
-  startRecording: () => void;
-  stopRecording: () => void;
-  clearEvents: () => void;
-}
-
-const NetworkContext = createContext<NetworkContextType | null>(null);
-
-export const useNetworkEvents = () => {
-  const context = useContext(NetworkContext);
-  if (!context) throw new Error("useNetworkEvents must be used within a NetworkInterceptor");
-  return context;
-};
-
-function NetworkInterceptor({ children }: { children: ReactNode }) {
-  const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-
-  useEffect(() => {
-    if (!isRecording) return;
+    if (!isNetworkRecording) return;
 
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
@@ -663,61 +602,302 @@ function NetworkInterceptor({ children }: { children: ReactNode }) {
     };
 
     return () => window.fetch = originalFetch;
-  }, [isRecording]);
+  }, [isNetworkRecording]);
+
+  // Mouse event listeners effect
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener("mousemove", handleMouseMove);
+      container.addEventListener("mouseleave", handleMouseLeave);
+      container.addEventListener("click", handleClick, true);
+
+      return () => {
+        container.removeEventListener("mousemove", handleMouseMove);
+        container.removeEventListener("mouseleave", handleMouseLeave);
+        container.removeEventListener("click", handleClick, true);
+        if (highlightedElement) {
+          highlightedElement.style.outline = "";
+          highlightedElement.style.outlineOffset = "";
+        }
+      };
+    }
+  }, [highlightedElement, isEventRecording]);
 
   const contextValue = {
     networkEvents,
-    isRecording,
-    startRecording: () => {
-      setNetworkEvents([]);
-      setIsRecording(true);
-    },
-    stopRecording: () => {
-      setIsRecording(false);
-    },
-    clearEvents: () => {
-      setNetworkEvents([]);
-    },
+    isNetworkRecording,
+    startNetworkRecording,
+    stopNetworkRecording,
+    clearNetworkEvents,
+    recordedEvents,
+    isEventRecording,
+    startEventRecording,
+    stopEventRecording,
+    clearEvents,
   };
 
   return (
-    <NetworkContext.Provider value={contextValue}>
-      <div>
-        <div style={{ position: "fixed", top: "10px", left: "250px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, minWidth: "200px" }}>
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Network Recording</div>
+    <TestGeneratorContext.Provider value={contextValue}>
+      <div ref={containerRef} style={{ minHeight: "100vh" }}>
+        {children}
+
+        {/* Event Recording Panel */}
+        <div
+          style={{
+            position: "fixed",
+            top: "10px",
+            left: "10px",
+            background: "rgba(0, 0, 0, 0.9)",
+            color: "white",
+            padding: "12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            zIndex: 1000,
+            minWidth: "200px",
+          }}
+        >
+          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+            Event Recording
+          </div>
+          <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
+            Events: {recordedEvents.filter((e) => e.type === "click").length}
+            {" "}
+            | Assertions:{" "}
+            {recordedEvents.filter((e) => e.type === "assertion").length}
+          </div>
           <div style={{ marginBottom: "8px" }}>
-            <button onClick={isRecording ? contextValue.stopRecording : contextValue.startRecording} style={{ background: isRecording ? "#ff4444" : "#2196F3", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", marginRight: "8px", fontSize: "11px" }}>
-              {isRecording ? "Stop" : "Start"} Recording
+            <button
+              onClick={isEventRecording
+                ? stopEventRecording
+                : startEventRecording}
+              style={{
+                background: isEventRecording ? "#ff4444" : "#4CAF50",
+                color: "white",
+                border: "none",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                marginRight: "8px",
+                fontSize: "11px",
+              }}
+            >
+              {isEventRecording ? "Stop" : "Start"} Recording
             </button>
-            <button onClick={contextValue.clearEvents} style={{ background: "#666", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>
+            <button
+              onClick={clearEvents}
+              style={{
+                background: "#666",
+                color: "white",
+                border: "none",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+              }}
+            >
+              Clear ({recordedEvents.length})
+            </button>
+          </div>
+          {isEventRecording && (
+            <div style={{ color: "#ff4444" }}>● Recording clicks...</div>
+          )}
+          {isEventRecording && (
+            <div style={{ color: "#888", fontSize: "10px", marginTop: "4px" }}>
+              Ctrl+Click for assertions
+            </div>
+          )}
+        </div>
+
+        {/* Network Recording Panel */}
+        <div
+          style={{
+            position: "fixed",
+            top: "10px",
+            left: "250px",
+            background: "rgba(0, 0, 0, 0.9)",
+            color: "white",
+            padding: "12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            zIndex: 1000,
+            minWidth: "200px",
+          }}
+        >
+          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+            Network Recording
+          </div>
+          <div style={{ marginBottom: "8px" }}>
+            <button
+              onClick={isNetworkRecording
+                ? stopNetworkRecording
+                : startNetworkRecording}
+              style={{
+                background: isNetworkRecording ? "#ff4444" : "#2196F3",
+                color: "white",
+                border: "none",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                marginRight: "8px",
+                fontSize: "11px",
+              }}
+            >
+              {isNetworkRecording ? "Stop" : "Start"} Recording
+            </button>
+            <button
+              onClick={clearNetworkEvents}
+              style={{
+                background: "#666",
+                color: "white",
+                border: "none",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+              }}
+            >
               Clear ({networkEvents.length})
             </button>
           </div>
-          {isRecording && <div style={{ color: "#2196F3" }}>● Recording network...</div>}
+          {isNetworkRecording && (
+            <div style={{ color: "#2196F3" }}>● Recording network...</div>
+          )}
         </div>
 
-        {networkEvents.length > 0 && (
-          <div style={{ position: "fixed", bottom: "10px", left: "10px", right: "10px", maxHeight: "200px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "10px", borderRadius: "4px", fontSize: "11px", fontFamily: "monospace", overflow: "auto", zIndex: 999 }}>
-            <div><strong>Network Events Log:</strong></div>
-            {networkEvents.map((event, index) => (
-              <div key={index} style={{ marginBottom: "5px" }}>
-                {event.type === "network-request" ? (
-                  <span style={{ color: "#87CEEB" }}>→ {event.method} {event.url}</span>
-                ) : (
-                  <span style={{ color: "#90EE90" }}>← {event.status} (Response)</span>
+        {recordedEvents.length > 0 && (
+          <div
+            style={{
+              position: "fixed",
+              top: "10px",
+              right: "10px",
+              background: "rgba(0, 0, 0, 0.9)",
+              color: "white",
+              padding: "12px",
+              borderRadius: "8px",
+              fontSize: "11px",
+              fontFamily: "monospace",
+              zIndex: 1000,
+              maxWidth: "400px",
+              maxHeight: "400px",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+              Recorded Events ({recordedEvents.length})
+            </div>
+            {recordedEvents.slice(-10).map((event) => (
+              <div
+                key={event.id}
+                style={{
+                  marginBottom: "8px",
+                  padding: "6px",
+                  background: "rgba(255, 255, 255, 0.1)",
+                  borderRadius: "4px",
+                  fontSize: "10px",
+                }}
+              >
+                <div
+                  style={{
+                    color: event.type === "assertion" ? "#FF9800" : "#4CAF50",
+                  }}
+                >
+                  {event.type === "assertion" ? "assertion" : "click"}:{" "}
+                  {event.testId}
+                </div>
+                <div style={{ opacity: 0.8 }}>
+                  time: {new Date(event.timestamp).toLocaleTimeString()}
+                </div>
+                <div style={{ opacity: 0.8 }}>
+                  element: {event.tagName}
+                  {event.elementType ? `[${event.elementType}]` : ""}
+                </div>
+                {event.elementText && (
+                  <div style={{ opacity: 0.8 }}>
+                    text: "{event.elementText.length > 30
+                      ? event.elementText.substring(0, 30) + "..."
+                      : event.elementText}"
+                  </div>
                 )}
-                <span style={{ color: "#ddd", marginLeft: "10px" }}>
-                  {new Date(event.timestamp).toLocaleTimeString()}
-                </span>
               </div>
             ))}
+            {recordedEvents.length > 10 && (
+              <div style={{ opacity: 0.6, textAlign: "center" }}>
+                ... showing last 10 events
+              </div>
+            )}
           </div>
         )}
 
-        {children}
+        {highlightedElement && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: "10px",
+              right: "10px",
+              background: "rgba(0, 0, 0, 0.9)",
+              color: "white",
+              padding: "12px",
+              borderRadius: "8px",
+              fontSize: "12px",
+              fontFamily: "monospace",
+              zIndex: 1000,
+              pointerEvents: "none",
+              maxWidth: "300px",
+              wordBreak: "break-word",
+            }}
+          >
+            <div
+              style={{
+                marginBottom: "4px",
+                fontWeight: "bold",
+                color: "#ff6b6b",
+              }}
+            >
+              Element Info
+            </div>
+            <div style={{ color: "#4CAF50" }}>
+              data-test-id: {highlightedElement.getAttribute("data-test-id")}
+            </div>
+            {(() => {
+              const text = highlightedElement.innerText?.trim();
+              if (text && text.length > 0) {
+                const truncatedText = text.length > 100
+                  ? text.substring(0, 100) + "..."
+                  : text;
+                return (
+                  <div style={{ marginTop: "4px", opacity: 0.8 }}>
+                    text: "{truncatedText}"
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+        )}
+
+        <TestGenerator />
       </div>
-    </NetworkContext.Provider>
+    </TestGeneratorContext.Provider>
   );
+}
+
+interface NetworkEvent {
+  id: string;
+  type: "network-request" | "network-response" | "network-error";
+  method?: string;
+  url: string;
+  timestamp: number;
+  status?: number;
+  request?: {
+    body: string | null;
+  };
+  response?: {
+    data: unknown;
+  };
+  error?: string;
 }
 
 interface EventHistoryItem {
@@ -738,11 +918,6 @@ interface NetworkHistoryItem {
   timestamp: number;
 }
 
-interface TestGeneratorProps {
-  eventHistory: EventHistoryItem[];
-  networkHistory: NetworkHistoryItem[];
-}
-
 interface GeneratedTestSuite {
   testCode: string;
   mswHandlers: string;
@@ -754,8 +929,12 @@ interface GeneratedTestSuite {
   };
 }
 
-function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
-  const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(null);
+function TestGenerator() {
+  const { recordedEvents: eventHistory, networkEvents: networkHistory } =
+    useTestGenerator();
+  const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(
+    null,
+  );
   const [showOutput, setShowOutput] = useState(false);
   const [testOptions, setTestOptions] = useState({
     testName: "should handle user interactions correctly",
@@ -825,7 +1004,13 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
             <div
               style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}
             >
-              Events: {eventHistory.filter(e => e.type === "click").length} | Assertions: {eventHistory.filter(e => e.type === "assertion").length} | Network: {networkHistory.filter((e) => e.type === "network-request").length}
+              Events: {eventHistory.filter((e) => e.type === "click").length}
+              {" "}
+              | Assertions:{" "}
+              {eventHistory.filter((e) => e.type === "assertion").length}{" "}
+              | Network:{" "}
+              {networkHistory.filter((e) => e.type === "network-request")
+                .length}
             </div>
 
             <div style={{ marginBottom: "8px" }}>
@@ -1049,5 +1234,5 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
   );
 }
 
-export default TestGenerator;
-export { NetworkInterceptor, TestIdFinder };
+export default TestGeneratorProvider;
+export { TestGeneratorProvider };

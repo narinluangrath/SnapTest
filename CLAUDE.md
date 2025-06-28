@@ -1,7 +1,11 @@
 # Integration Test Framework - Complete Implementation
 
 ## Overview
-This project is a complete integration test framework built with React, TypeScript, Vite and Deno. The framework records user interactions, assertions, and network requests to automatically generate React Testing Library tests with MSW v1 mocks.
+
+This project is a complete integration test framework built with React,
+TypeScript, Vite and Deno. The framework records user interactions, assertions,
+and network requests to automatically generate React Testing Library tests with
+MSW v1 mocks.
 
 ## ✅ Completed Implementation
 
@@ -36,6 +40,7 @@ The framework is **fully functional** and includes all core features:
 ### 🏗️ Architecture
 
 **Consolidated Single-File Design:**
+
 ```
 src/
 ├── App.tsx              # MockUserApp demo component
@@ -44,6 +49,7 @@ src/
 ```
 
 **TestGenerator.tsx contains:**
+
 - TestIdFinder (element tracking & recording)
 - NetworkInterceptor (network recording)
 - TestGenerator (test generation UI)
@@ -52,11 +58,13 @@ src/
 ### 🎮 User Interface
 
 **Recording Controls:**
+
 - Event recording panel (top-left)
-- Network recording panel (top-center)  
+- Network recording panel (top-center)
 - Test generator panel (bottom-right)
 
 **Real-time Feedback:**
+
 - Live event history (top-right)
 - Network activity log (bottom overlay)
 - Element info tooltip (bottom-right)
@@ -64,6 +72,7 @@ src/
 ### 🧪 Test Generation Features
 
 **Generated Tests Include:**
+
 - Component rendering with proper imports
 - Sequential click events with `fireEvent.click()`
 - Text content assertions with `toHaveTextContent()`
@@ -72,6 +81,7 @@ src/
 - Proper MSW setup/teardown in describe blocks
 
 **MSW v1 Compatibility:**
+
 - Uses `rest.get/post/etc()` instead of `http.method()`
 - Proper `(req, res, ctx)` handler signature
 - `res(ctx.status(), ctx.json())` response format
@@ -80,7 +90,7 @@ src/
 
 1. **Start Recording**: Click "Start Recording" in event panel
 2. **Interact**: Click elements to record interactions
-3. **Assert**: Ctrl+Click elements to record text assertions  
+3. **Assert**: Ctrl+Click elements to record text assertions
 4. **Network**: Toggle network recording to capture API calls
 5. **Generate**: Configure test name/component and generate test code
 6. **Export**: Copy or download generated test and MSW handlers
@@ -88,6 +98,7 @@ src/
 ### 🚀 Demo Application
 
 **MockUserApp** demonstrates:
+
 - User profile fetching from JSONPlaceholder API
 - Dynamic content loading with loading states
 - State-aware test IDs (`random-user-button-ready` vs `loading`)
@@ -97,7 +108,7 @@ src/
 ### Technology Stack
 
 - **React 18 + TypeScript** - UI framework with type safety
-- **Vite** - Build tool and dev server  
+- **Vite** - Build tool and dev server
 - **Deno** - JavaScript runtime (instead of Node.js)
 - **MSW v1** - Network request mocking (compatible with generated tests)
 - **JSONPlaceholder** - Mock API for demo data
@@ -110,6 +121,7 @@ deno task dev  # Start development server
 ```
 
 The app will show:
+
 - User data fetching demo
 - Real-time test ID highlighting on hover
 - Network request recording controls
