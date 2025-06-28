@@ -1,5 +1,724 @@
-import { useState } from "react";
-import { generateTestSuite } from "./testGenerator.ts";
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
+
+// Test Generation Logic (from testGenerator.ts)
+interface TestOptions {
+  testName?: string;
+  componentName?: string;
+  describe?: string;
+}
+
+interface GeneratedTest {
+  testCode: string;
+  mswHandlers: string;
+  combinedEvents: CombinedEvent[];
+}
+
+interface CombinedEvent {
+  id: string | number;
+  timestamp: number;
+  testId: string;
+  elementText: string;
+  tagName: string;
+  elementType?: string | null;
+  position?: {
+    x: number;
+    y: number;
+  };
+  clickPosition?: {
+    x: number;
+    y: number;
+  };
+  type: "click" | "assertion" | "network-request" | "network-response" | "network-error";
+  method?: string;
+  url?: string;
+  request?: {
+    body: string | null;
+  };
+  response?: {
+    data: unknown;
+  };
+  status?: number;
+  error?: string;
+}
+
+interface TestSummary {
+  totalEvents: number;
+  totalNetworkCalls: number;
+  uniqueTestIds: string[];
+  uniqueEndpoints: string[];
+}
+
+interface GeneratedTestSuite extends GeneratedTest {
+  summary: TestSummary;
+}
+
+function generateTest(
+  eventHistory: EventHistoryItem[],
+  networkHistory: NetworkHistoryItem[],
+  options: TestOptions = {}
+): GeneratedTest {
+  const {
+    testName = "should handle user interactions correctly",
+    componentName = "MyComponent",
+    describe = "MyComponent Integration Tests",
+  } = options;
+
+  const combinedEvents: CombinedEvent[] = [
+    ...eventHistory.map((event): CombinedEvent => ({
+      ...event,
+      type: event.type,
+      timestamp: new Date(event.timestamp).getTime(),
+    })),
+    ...networkHistory.map((event): CombinedEvent => ({
+      id: event.id.toString(),
+      testId: "",
+      elementText: "",
+      tagName: "",
+      elementType: null,
+      timestamp: event.timestamp,
+      type: event.type as "network-request" | "network-response" | "network-error",
+      method: event.method,
+      url: event.url,
+      request: event.request,
+      response: event.response,
+      status: event.status,
+      error: event.error,
+    })),
+  ].sort((a, b) => a.timestamp - b.timestamp);
+
+  const mswHandlers = generateMSWHandlers(networkHistory);
+  const testCode = generateTestCode(combinedEvents, {
+    testName,
+    componentName,
+    describe,
+  });
+
+  return {
+    testCode,
+    mswHandlers,
+    combinedEvents,
+  };
+}
+
+function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
+  const defaultHandlers = new Map();
+
+  networkHistory.forEach((event) => {
+    if (event.type === "network-response") {
+      const method = event.method || "GET";
+      const url = new URL(event.url);
+      const fullPath = url.pathname + url.search;
+      const requestBody = event.request?.body || null;
+      const key = `${method}-${fullPath}-${JSON.stringify(requestBody)}`;
+
+      if (!defaultHandlers.has(key)) {
+        defaultHandlers.set(key, {
+          method: method.toLowerCase(),
+          fullPath,
+          requestBody,
+          status: event.status,
+          data: event.response?.data,
+          headers: event.response?.headers || {},
+        });
+      }
+    }
+  });
+
+  const handlers: string[] = [];
+  defaultHandlers.forEach((handler) => {
+    const hasBody = handler.requestBody !== null &&
+      ["post", "put", "patch"].includes(handler.method);
+
+    if (hasBody) {
+      handlers.push(`
+  rest.${handler.method}('*${handler.fullPath}', async (req, res, ctx) => {
+    const body = await req.text()
+    if (body === ${JSON.stringify(handler.requestBody)}) {
+      return res(
+        ctx.status(${handler.status}),
+        ctx.json(${JSON.stringify(handler.data, null, 4)})
+      )
+    }
+    return res(ctx.status(400), ctx.text('Request body mismatch'))
+  })`);
+    } else {
+      handlers.push(`
+  rest.${handler.method}('*${handler.fullPath}', (req, res, ctx) => {
+    return res(
+      ctx.status(${handler.status}),
+      ctx.json(${JSON.stringify(handler.data, null, 4)})
+    )
+  })`);
+    }
+  });
+
+  return `import { rest } from 'msw'
+
+export const handlers = [${handlers.join(",")}\n]`;
+}
+
+function generateTestCode(
+  combinedEvents: CombinedEvent[],
+  { testName, componentName, describe }: Required<TestOptions>,
+): string {
+  const imports = [
+    "import { render, screen, fireEvent, waitFor } from '@testing-library/react'",
+    "import { rest } from 'msw'",
+    "import { server } from '../mocks/server'",
+    `import ${componentName} from './${componentName}'`,
+  ];
+
+  const testSteps = [];
+  let stepNumber = 1;
+
+  for (let i = 0; i < combinedEvents.length; i++) {
+    const event = combinedEvents[i];
+    const nextEvent = combinedEvents[i + 1];
+
+    if (event.type === "click") {
+      testSteps.push(`
+    // Step ${stepNumber}: Click ${event.testId}
+    const ${camelCase(event.testId)} = await screen.findByTestId('${event.testId}')
+    fireEvent.click(${camelCase(event.testId)})`);
+      stepNumber++;
+
+      if (nextEvent && nextEvent.type === "network-response" && nextEvent.url) {
+        const method = (nextEvent.method || "GET").toLowerCase();
+        const url = new URL(nextEvent.url);
+        const fullPath = url.pathname + url.search;
+        const requestBody = nextEvent.request?.body || null;
+        const hasBody = requestBody !== null &&
+          ["post", "put", "patch"].includes(method);
+
+        if (hasBody) {
+          testSteps.push(`
+    // Step ${stepNumber}: Setup mock for triggered request
+    server.use(
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        const body = await req.text()
+        if (body === ${JSON.stringify(requestBody)}) {
+          return res(
+            ctx.status(${nextEvent.status}),
+            ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+          )
+        }
+        return res(ctx.status(400), ctx.text('Request body mismatch'))
+      })
+    )
+    
+    // Step ${stepNumber + 1}: Wait for network call to complete
+    await waitFor(() => {
+      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
+    })`);
+        } else {
+          testSteps.push(`
+    // Step ${stepNumber}: Setup mock for triggered request
+    server.use(
+      rest.${method}('*${fullPath}', (req, res, ctx) => {
+        return res(
+          ctx.status(${nextEvent.status}),
+          ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+        )
+      })
+    )
+    
+    // Step ${stepNumber + 1}: Wait for network call to complete
+    await waitFor(() => {
+      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
+    })`);
+        }
+        stepNumber += 2;
+        i++;
+      }
+    } else if (event.type === "assertion") {
+      testSteps.push(`
+    // Step ${stepNumber}: Assert ${event.testId} text content
+    expect(await screen.findByTestId('${event.testId}')).toHaveTextContent('${event.elementText.replace(/'/g, "\\'")}')`);
+      stepNumber++;
+    } else if (event.type === "network-response" && event.url) {
+      const method = (event.method || "GET").toLowerCase();
+      const url = new URL(event.url);
+      const fullPath = url.pathname + url.search;
+      const requestBody = event.request?.body || null;
+      const hasBody = requestBody !== null &&
+        ["post", "put", "patch"].includes(method);
+
+      if (hasBody) {
+        testSteps.push(`
+    // Step ${stepNumber}: Setup mock for background request
+    server.use(
+      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        const body = await req.text()
+        if (body === ${JSON.stringify(requestBody)}) {
+          return res(
+            ctx.status(${event.status}),
+            ctx.json(${JSON.stringify(event.response?.data, null, 8)})
+          )
+        }
+        return res(ctx.status(400), ctx.text('Request body mismatch'))
+      })
+    )`);
+      } else {
+        testSteps.push(`
+    // Step ${stepNumber}: Setup mock for background request
+    server.use(
+      rest.${method}('*${fullPath}', (req, res, ctx) => {
+        return res(
+          ctx.status(${event.status}),
+          ctx.json(${JSON.stringify(event.response?.data, null, 8)})
+        )
+      })
+    )`);
+      }
+      stepNumber++;
+    }
+  }
+
+  const testCode = `${imports.join("\n")}
+
+describe('${describe}', () => {
+  beforeEach(() => {
+    server.listen()
+  })
+
+  afterEach(() => {
+    server.resetHandlers()
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  test('${testName}', async () => {
+    // Render component
+    render(<${componentName} />)
+${testSteps.join("\n")}
+  })
+})`;
+
+  return testCode;
+}
+
+function camelCase(str: string): string {
+  return str.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase())
+    .replace(/^[a-z]/, (match) => match.toLowerCase());
+}
+
+export function generateTestSuite(
+  eventHistory: EventHistoryItem[],
+  networkHistory: NetworkHistoryItem[],
+  options: TestOptions = {}
+): GeneratedTestSuite {
+  const result = generateTest(eventHistory, networkHistory, options);
+
+  return {
+    ...result,
+    summary: {
+      totalEvents: eventHistory.length,
+      totalNetworkCalls:
+        networkHistory.filter((e) => e.type === "network-request").length,
+      uniqueTestIds: [...new Set(eventHistory.map((e) => e.testId))],
+      uniqueEndpoints: [
+        ...new Set(
+          networkHistory.filter((e) => e.type === "network-request").map((e) =>
+            e.url
+          ),
+        ),
+      ],
+    },
+  };
+}
+
+// TestIdFinder Logic (from TestIdFinder.tsx)
+interface TestIdFinderProps {
+  children: React.ReactNode;
+}
+
+interface RecordedEvent {
+  id: number;
+  timestamp: string;
+  testId: string;
+  elementText: string;
+  tagName: string;
+  elementType?: string | null;
+  type: "click" | "assertion";
+  position: {
+    x: number;
+    y: number;
+  };
+  clickPosition: {
+    x: number;
+    y: number;
+  };
+}
+
+function TestIdFinder({ children }: TestIdFinderProps) {
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+  const [recordedEvents, setRecordedEvents] = useState<RecordedEvent[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [assertionHighlight, setAssertionHighlight] = useState<Element | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { networkEvents } = useNetworkEvents();
+
+  const findClosestTestId = (element: Element): Element | null => {
+    let current = element;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.getAttribute("data-test-id")) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  };
+
+  const handleMouseMove = (event: MouseEvent) => {
+    const target = event.target as Element;
+    const elementWithTestId = findClosestTestId(target);
+
+    if (elementWithTestId !== highlightedElement) {
+      if (highlightedElement) {
+        (highlightedElement as HTMLElement).style.outline = "";
+        (highlightedElement as HTMLElement).style.outlineOffset = "";
+      }
+
+      if (elementWithTestId) {
+        (elementWithTestId as HTMLElement).style.outline = "2px solid red";
+        (elementWithTestId as HTMLElement).style.outlineOffset = "2px";
+      }
+
+      setHighlightedElement(elementWithTestId);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (highlightedElement) {
+      highlightedElement.style.outline = "";
+      highlightedElement.style.outlineOffset = "";
+      setHighlightedElement(null);
+    }
+  };
+
+  const handleClick = (event: React.MouseEvent) => {
+    if (!isRecording) return;
+
+    const target = event.target as Element;
+    const elementWithTestId = findClosestTestId(target);
+
+    if (elementWithTestId) {
+      const testId = elementWithTestId.getAttribute("data-test-id");
+      const timestamp = new Date().toISOString();
+      const elementText = elementWithTestId.innerText?.trim() || "";
+      const tagName = elementWithTestId.tagName.toLowerCase();
+      const elementType = elementWithTestId.type || null;
+      const rect = elementWithTestId.getBoundingClientRect();
+
+      if (event.ctrlKey) {
+        event.stopPropagation();
+        
+        setAssertionHighlight(elementWithTestId);
+        (elementWithTestId as HTMLElement).style.outline = "3px solid orange";
+        (elementWithTestId as HTMLElement).style.outlineOffset = "3px";
+        
+        setTimeout(() => {
+          (elementWithTestId as HTMLElement).style.outline = "";
+          (elementWithTestId as HTMLElement).style.outlineOffset = "";
+          setAssertionHighlight(null);
+        }, 1000);
+
+        const eventData = {
+          id: Date.now() + Math.random(),
+          timestamp,
+          testId,
+          elementText,
+          tagName,
+          elementType,
+          type: "assertion" as const,
+          position: {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          },
+          clickPosition: {
+            x: event.clientX,
+            y: event.clientY,
+          },
+        };
+
+        setRecordedEvents((prev) => [...prev, eventData]);
+        return;
+      }
+
+      const eventData = {
+        id: Date.now() + Math.random(),
+        timestamp,
+        testId,
+        elementText,
+        tagName,
+        elementType,
+        type: "click" as const,
+        position: {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        },
+        clickPosition: {
+          x: event.clientX,
+          y: event.clientY,
+        },
+      };
+
+      setRecordedEvents((prev) => [...prev, eventData]);
+    }
+  };
+
+  const toggleRecording = () => {
+    setIsRecording(!isRecording);
+  };
+
+  const clearEvents = () => {
+    setRecordedEvents([]);
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener("mousemove", handleMouseMove);
+      container.addEventListener("mouseleave", handleMouseLeave);
+      container.addEventListener("click", handleClick, true);
+
+      return () => {
+        container.removeEventListener("mousemove", handleMouseMove);
+        container.removeEventListener("mouseleave", handleMouseLeave);
+        container.removeEventListener("click", handleClick, true);
+        if (highlightedElement) {
+          highlightedElement.style.outline = "";
+          highlightedElement.style.outlineOffset = "";
+        }
+      };
+    }
+  }, [highlightedElement, isRecording]);
+
+  return (
+    <div ref={containerRef} style={{ minHeight: "100vh" }}>
+      {children}
+
+      <div style={{ position: "fixed", top: "10px", left: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, minWidth: "200px" }}>
+        <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Event Recording</div>
+        <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
+          Events: {recordedEvents.filter(e => e.type === "click").length} | Assertions: {recordedEvents.filter(e => e.type === "assertion").length}
+        </div>
+        <div style={{ marginBottom: "8px" }}>
+          <button onClick={toggleRecording} style={{ background: isRecording ? "#ff4444" : "#4CAF50", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", marginRight: "8px", fontSize: "11px" }}>
+            {isRecording ? "Stop" : "Start"} Recording
+          </button>
+          <button onClick={clearEvents} style={{ background: "#666", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>
+            Clear ({recordedEvents.length})
+          </button>
+        </div>
+        {isRecording && <div style={{ color: "#ff4444" }}>● Recording clicks...</div>}
+        {isRecording && <div style={{ color: "#888", fontSize: "10px", marginTop: "4px" }}>Ctrl+Click for assertions</div>}
+      </div>
+
+      {recordedEvents.length > 0 && (
+        <div style={{ position: "fixed", top: "10px", right: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "11px", fontFamily: "monospace", zIndex: 1000, maxWidth: "400px", maxHeight: "400px", overflowY: "auto" }}>
+          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Recorded Events ({recordedEvents.length})</div>
+          {recordedEvents.slice(-10).map((event) => (
+            <div key={event.id} style={{ marginBottom: "8px", padding: "6px", background: "rgba(255, 255, 255, 0.1)", borderRadius: "4px", fontSize: "10px" }}>
+              <div style={{ color: event.type === "assertion" ? "#FF9800" : "#4CAF50" }}>
+                {event.type === "assertion" ? "assertion" : "click"}: {event.testId}
+              </div>
+              <div style={{ opacity: 0.8 }}>time: {new Date(event.timestamp).toLocaleTimeString()}</div>
+              <div style={{ opacity: 0.8 }}>element: {event.tagName}{event.elementType ? `[${event.elementType}]` : ""}</div>
+              {event.elementText && (
+                <div style={{ opacity: 0.8 }}>
+                  text: "{event.elementText.length > 30 ? event.elementText.substring(0, 30) + "..." : event.elementText}"
+                </div>
+              )}
+            </div>
+          ))}
+          {recordedEvents.length > 10 && <div style={{ opacity: 0.6, textAlign: "center" }}>... showing last 10 events</div>}
+        </div>
+      )}
+
+      {highlightedElement && (
+        <div style={{ position: "fixed", bottom: "10px", right: "10px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, pointerEvents: "none", maxWidth: "300px", wordBreak: "break-word" }}>
+          <div style={{ marginBottom: "4px", fontWeight: "bold", color: "#ff6b6b" }}>Element Info</div>
+          <div style={{ color: "#4CAF50" }}>data-test-id: {highlightedElement.getAttribute("data-test-id")}</div>
+          {(() => {
+            const text = highlightedElement.innerText?.trim();
+            if (text && text.length > 0) {
+              const truncatedText = text.length > 100 ? text.substring(0, 100) + "..." : text;
+              return (
+                <div style={{ marginTop: "4px", opacity: 0.8 }}>text: "{truncatedText}"</div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      )}
+
+      <TestGenerator eventHistory={recordedEvents} networkHistory={networkEvents} />
+    </div>
+  );
+}
+
+interface NetworkEvent {
+  id: string;
+  type: "network-request" | "network-response" | "network-error";
+  method?: string;
+  url: string;
+  timestamp: number;
+  status?: number;
+  request?: {
+    body: string | null;
+  };
+  response?: {
+    data: unknown;
+  };
+  error?: string;
+}
+
+interface NetworkContextType {
+  networkEvents: NetworkEvent[];
+  isRecording: boolean;
+  startRecording: () => void;
+  stopRecording: () => void;
+  clearEvents: () => void;
+}
+
+const NetworkContext = createContext<NetworkContextType | null>(null);
+
+export const useNetworkEvents = () => {
+  const context = useContext(NetworkContext);
+  if (!context) throw new Error("useNetworkEvents must be used within a NetworkInterceptor");
+  return context;
+};
+
+function NetworkInterceptor({ children }: { children: ReactNode }) {
+  const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const requestId = crypto.randomUUID();
+      const [resource, config] = args;
+
+      const url = typeof resource === "string" ? resource : resource.url;
+      const method = config?.method || "GET";
+
+      const requestEvent: NetworkEvent = {
+        id: requestId,
+        type: "network-request",
+        method,
+        url,
+        timestamp: Date.now(),
+        request: {
+          body: (config?.body as string) || null,
+        },
+      };
+
+      setNetworkEvents((prev) => [...prev, requestEvent]);
+
+      try {
+        const response = await originalFetch(...args);
+        const responseClone = response.clone();
+
+        try {
+          const responseText = await responseClone.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch {
+            responseData = responseText;
+          }
+
+          const responseEvent: NetworkEvent = {
+            id: requestId,
+            type: "network-response",
+            status: response.status,
+            url,
+            timestamp: Date.now(),
+            response: {
+              data: responseData,
+            },
+          };
+
+          setNetworkEvents((prev) => [...prev, responseEvent]);
+        } catch (error) {}
+
+        return response;
+      } catch (error) {
+        const errorEvent: NetworkEvent = {
+          id: requestId,
+          type: "network-error",
+          url,
+          timestamp: Date.now(),
+          error: (error as Error).message,
+        };
+
+        setNetworkEvents((prev) => [...prev, errorEvent]);
+        throw error;
+      }
+    };
+
+    return () => window.fetch = originalFetch;
+  }, [isRecording]);
+
+  const contextValue = {
+    networkEvents,
+    isRecording,
+    startRecording: () => {
+      setNetworkEvents([]);
+      setIsRecording(true);
+    },
+    stopRecording: () => {
+      setIsRecording(false);
+    },
+    clearEvents: () => {
+      setNetworkEvents([]);
+    },
+  };
+
+  return (
+    <NetworkContext.Provider value={contextValue}>
+      <div>
+        <div style={{ position: "fixed", top: "10px", left: "250px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "12px", borderRadius: "8px", fontSize: "12px", fontFamily: "monospace", zIndex: 1000, minWidth: "200px" }}>
+          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>Network Recording</div>
+          <div style={{ marginBottom: "8px" }}>
+            <button onClick={isRecording ? contextValue.stopRecording : contextValue.startRecording} style={{ background: isRecording ? "#ff4444" : "#2196F3", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", marginRight: "8px", fontSize: "11px" }}>
+              {isRecording ? "Stop" : "Start"} Recording
+            </button>
+            <button onClick={contextValue.clearEvents} style={{ background: "#666", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>
+              Clear ({networkEvents.length})
+            </button>
+          </div>
+          {isRecording && <div style={{ color: "#2196F3" }}>● Recording network...</div>}
+        </div>
+
+        {networkEvents.length > 0 && (
+          <div style={{ position: "fixed", bottom: "10px", left: "10px", right: "10px", maxHeight: "200px", background: "rgba(0, 0, 0, 0.9)", color: "white", padding: "10px", borderRadius: "4px", fontSize: "11px", fontFamily: "monospace", overflow: "auto", zIndex: 999 }}>
+            <div><strong>Network Events Log:</strong></div>
+            {networkEvents.map((event, index) => (
+              <div key={index} style={{ marginBottom: "5px" }}>
+                {event.type === "network-request" ? (
+                  <span style={{ color: "#87CEEB" }}>→ {event.method} {event.url}</span>
+                ) : (
+                  <span style={{ color: "#90EE90" }}>← {event.status} (Response)</span>
+                )}
+                <span style={{ color: "#ddd", marginLeft: "10px" }}>
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {children}
+      </div>
+    </NetworkContext.Provider>
+  );
+}
 
 interface EventHistoryItem {
   id: string | number;
@@ -8,6 +727,7 @@ interface EventHistoryItem {
   elementText: string;
   tagName: string;
   elementType?: string | null;
+  type: "click" | "assertion";
 }
 
 interface NetworkHistoryItem {
@@ -105,9 +825,7 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
             <div
               style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}
             >
-              Events: {eventHistory.length} | Network:{" "}
-              {networkHistory.filter((e) => e.type === "network-request")
-                .length}
+              Events: {eventHistory.filter(e => e.type === "click").length} | Assertions: {eventHistory.filter(e => e.type === "assertion").length} | Network: {networkHistory.filter((e) => e.type === "network-request").length}
             </div>
 
             <div style={{ marginBottom: "8px" }}>
@@ -332,3 +1050,4 @@ function TestGenerator({ eventHistory, networkHistory }: TestGeneratorProps) {
 }
 
 export default TestGenerator;
+export { NetworkInterceptor, TestIdFinder };
