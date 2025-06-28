@@ -772,7 +772,7 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
             style={{
               position: "fixed",
               bottom: "10px",
-              right: "10px",
+              right: highlightedElement ? "320px" : "10px",
               left: "50%",
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
@@ -837,6 +837,7 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               position: "fixed",
               bottom: "10px",
               right: "10px",
+              width: "300px",
               background: "rgba(0, 0, 0, 0.9)",
               color: "white",
               padding: "12px",
@@ -845,8 +846,9 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
               fontFamily: "monospace",
               zIndex: 1000,
               pointerEvents: "none",
-              maxWidth: "300px",
+              maxHeight: "200px",
               wordBreak: "break-word",
+              overflowY: "auto",
             }}
           >
             <div
@@ -1021,7 +1023,7 @@ function TestGenerator() {
     <div
       style={{
         position: "fixed",
-        bottom: "10px",
+        top: "10px",
         right: "10px",
         background: "rgba(0, 0, 0, 0.9)",
         color: "white",
