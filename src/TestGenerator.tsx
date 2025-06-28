@@ -348,8 +348,8 @@ export function generateTestSuite(
   };
 }
 
-// Combined TestGeneratorProvider Logic
-interface TestGeneratorProviderProps {
+// Combined SnapTestProvider Logic
+interface SnapTestProviderProps {
   children: React.ReactNode;
 }
 
@@ -371,7 +371,7 @@ interface RecordedEvent {
   };
 }
 
-interface TestGeneratorContextType {
+interface SnapTestContextType {
   networkEvents: NetworkEvent[];
   isNetworkRecording: boolean;
   startNetworkRecording: () => void;
@@ -384,21 +384,21 @@ interface TestGeneratorContextType {
   clearEvents: () => void;
 }
 
-const TestGeneratorContext = createContext<TestGeneratorContextType | null>(
+const SnapTestContext = createContext<SnapTestContextType | null>(
   null,
 );
 
-export const useTestGenerator = () => {
-  const context = useContext(TestGeneratorContext);
+export const useSnapTest = () => {
+  const context = useContext(SnapTestContext);
   if (!context) {
     throw new Error(
-      "useTestGenerator must be used within a TestGeneratorProvider",
+      "useSnapTest must be used within a SnapTestProvider",
     );
   }
   return context;
 };
 
-function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
+function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Network recording state
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
   const [isNetworkRecording, setIsNetworkRecording] = useState(false);
@@ -671,7 +671,7 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
   };
 
   return (
-    <TestGeneratorContext.Provider value={contextValue}>
+    <SnapTestContext.Provider value={contextValue}>
       <div ref={containerRef} style={{ minHeight: "100vh" }}>
         {children}
 
@@ -955,9 +955,9 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
           </div>
         )}
 
-        <TestGenerator />
+        <SnapTestGenerator />
       </div>
-    </TestGeneratorContext.Provider>
+    </SnapTestContext.Provider>
   );
 }
 
@@ -1006,9 +1006,9 @@ interface GeneratedTestSuite {
   };
 }
 
-function TestGenerator() {
+function SnapTestGenerator() {
   const { recordedEvents: eventHistory, networkEvents: networkHistory } =
-    useTestGenerator();
+    useSnapTest();
   const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(
     null,
   );
@@ -1072,7 +1072,7 @@ function TestGenerator() {
       }}
     >
       <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
-        Test Generator
+        SnapTest Generator
       </div>
 
       {!showOutput
@@ -1311,5 +1311,5 @@ function TestGenerator() {
   );
 }
 
-export default TestGeneratorProvider;
-export { TestGeneratorProvider };
+export default SnapTestProvider;
+export { SnapTestProvider };

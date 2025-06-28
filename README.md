@@ -1,6 +1,6 @@
-# Integration Test Framework
+# SnapTest ⚡
 
-A complete React integration test framework that records user interactions and
+A lightning-fast React testing framework that records user interactions and
 automatically generates React Testing Library tests with MSW mocks.
 
 ## 🚀 Quick Start
@@ -8,14 +8,14 @@ automatically generates React Testing Library tests with MSW mocks.
 **Just copy `src/TestGenerator.tsx` into your project and wrap your app:**
 
 ```tsx
-import { TestGeneratorProvider } from "./TestGenerator";
+import { SnapTestProvider } from "./TestGenerator";
 import YourApp from "./YourApp";
 
 function App() {
   return (
-    <TestGeneratorProvider>
+    <SnapTestProvider>
       <YourApp />
-    </TestGeneratorProvider>
+    </SnapTestProvider>
   );
 }
 ```
@@ -123,8 +123,8 @@ describe("MyComponent Integration Tests", () => {
 
 **Core Components:**
 
-- **TestGeneratorProvider**: Unified provider that combines element
-  highlighting, network interception, and test generation
+- **SnapTestProvider**: Unified provider that combines element highlighting,
+  network interception, and test generation
 - **Element Recording**: Mouse hover highlighting and click/assertion recording
 - **Network Recording**: Automatic fetch() request capture and mocking
 - **Test Generation**: Complete test code generation and export
@@ -143,7 +143,7 @@ describe("MyComponent Integration Tests", () => {
 - Network event counter and clear button
 - Real-time request/response logging
 
-**Test Generator Panel (Bottom-Right):**
+**SnapTest Generator Panel (Top-Right):**
 
 - Configure test name and component name
 - Generate complete test suites
@@ -209,7 +209,7 @@ Run the demo:
 deno task dev
 ```
 
-## 📖 Why This Framework?
+## 📖 Why SnapTest?
 
 **Problems it solves:**
 
@@ -227,4 +227,4 @@ deno task dev
 - **MSW integration**: Industry-standard request mocking
 - **Visual feedback**: See exactly what's being recorded in real-time
 
-Start recording your integration tests today! 🎉
+Start snapping your integration tests today with SnapTest! ⚡🎉

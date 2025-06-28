@@ -1,15 +1,15 @@
-# Integration Test Framework - Complete Implementation
+# SnapTest ⚡ - Complete Implementation
 
 ## Overview
 
-This project is a complete integration test framework built with React,
-TypeScript, Vite and Deno. The framework records user interactions, assertions,
-and network requests to automatically generate React Testing Library tests with
-MSW v1 mocks.
+SnapTest is a lightning-fast, complete testing framework built with React,
+TypeScript, Vite and Deno. SnapTest records user interactions, assertions, and
+network requests to automatically generate React Testing Library tests with MSW
+v1 mocks in a snap!
 
 ## ✅ Completed Implementation
 
-The framework is **fully functional** and includes all core features:
+SnapTest is **fully functional** and includes all core features:
 
 ### 🎯 Core Functionality
 
@@ -120,7 +120,7 @@ src/
 deno task dev  # Start development server
 ```
 
-The app will show:
+SnapTest will show:
 
 - User data fetching demo
 - Real-time test ID highlighting on hover
