@@ -1,0 +1,15 @@
+{
+  "name": "react-vite-deno",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "deno task dev",
+    "build": "deno task build",
+    "preview": "deno task preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "vite": "^5.0.0"
+  }
+}
