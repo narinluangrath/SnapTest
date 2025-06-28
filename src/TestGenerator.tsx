@@ -425,8 +425,35 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
     return null;
   };
 
+  const isWithinFrameworkUI = (element: Element): boolean => {
+    let current = element;
+    while (current && current !== document.body) {
+      if (current instanceof HTMLElement) {
+        const style = window.getComputedStyle(current);
+        // Check if element has framework UI styling (fixed position with high z-index)
+        if (style.position === "fixed" && parseInt(style.zIndex) >= 999) {
+          return true;
+        }
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
+
   const handleMouseMove = (event: MouseEvent) => {
     const target = event.target as Element;
+
+    // Ignore hovers within framework UI panels
+    if (isWithinFrameworkUI(target)) {
+      // Clear any existing highlight when entering framework UI
+      if (highlightedElement) {
+        (highlightedElement as HTMLElement).style.outline = "";
+        (highlightedElement as HTMLElement).style.outlineOffset = "";
+        setHighlightedElement(null);
+      }
+      return;
+    }
+
     const elementWithTestId = findClosestTestId(target);
 
     if (elementWithTestId !== highlightedElement) {
@@ -456,22 +483,6 @@ function TestGeneratorProvider({ children }: TestGeneratorProviderProps) {
     if (!isEventRecording) return;
 
     const target = event.target as Element;
-
-    // Check if click is within any framework UI panel
-    const isWithinFrameworkUI = (element: Element): boolean => {
-      let current = element;
-      while (current && current !== document.body) {
-        if (current instanceof HTMLElement) {
-          const style = window.getComputedStyle(current);
-          // Check if element has framework UI styling (fixed position with high z-index)
-          if (style.position === "fixed" && parseInt(style.zIndex) >= 999) {
-            return true;
-          }
-        }
-        current = current.parentElement;
-      }
-      return false;
-    };
 
     // Ignore clicks within framework UI panels
     if (isWithinFrameworkUI(target)) {
