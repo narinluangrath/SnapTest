@@ -172,6 +172,50 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
 export const handlers = [${handlers.join(",")}\n]`;
 }
 
+interface NetworkState {
+  clickEventId: string;
+  networkEvents: CombinedEvent[];
+  validUntil: number;
+}
+
+function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[] {
+  const networkStates: NetworkState[] = [];
+  let currentClick: CombinedEvent | null = null;
+  let currentNetworkEvents: CombinedEvent[] = [];
+
+  for (const event of combinedEvents) {
+    if (event.type === "click") {
+      // Finish previous network state if exists
+      if (currentClick) {
+        networkStates.push({
+          clickEventId: currentClick.id.toString(),
+          networkEvents: [...currentNetworkEvents],
+          validUntil: event.timestamp
+        });
+      }
+      
+      // Start new network state
+      currentClick = event;
+      currentNetworkEvents = [];
+      
+    } else if (event.type === "network-response" && currentClick) {
+      // Associate this network event with the current click
+      currentNetworkEvents.push(event);
+    }
+  }
+
+  // Handle final network state (no next click to invalidate it)
+  if (currentClick) {
+    networkStates.push({
+      clickEventId: currentClick.id.toString(),
+      networkEvents: [...currentNetworkEvents],
+      validUntil: Infinity
+    });
+  }
+
+  return networkStates;
+}
+
 function generateTestCode(
   combinedEvents: CombinedEvent[],
   { testName, componentName, describe }: Required<TestOptions>,
@@ -183,112 +227,73 @@ function generateTestCode(
     `import ${componentName} from './${componentName}'`,
   ];
 
-  const testSteps = [];
+  const networkStates = correlateNetworkStates(combinedEvents);
+  const testSteps: string[] = [];
   let stepNumber = 1;
 
-  for (let i = 0; i < combinedEvents.length; i++) {
-    const event = combinedEvents[i];
-    const nextEvent = combinedEvents[i + 1];
+  // Add initial render step
+  testSteps.push(`    // Render component
+    render(<${componentName} />)`);
 
+  for (const event of combinedEvents) {
     if (event.type === "click") {
-      testSteps.push(`
-    // Step ${stepNumber}: Click ${event.testId}
-    const ${
-        camelCase(event.testId)
-      } = await screen.findByTestId('${event.testId}')
-    fireEvent.click(${camelCase(event.testId)})`);
-      stepNumber++;
-
-      if (nextEvent && nextEvent.type === "network-response" && nextEvent.url) {
-        const method = (nextEvent.method || "GET").toLowerCase();
-        const url = new URL(nextEvent.url);
-        const fullPath = url.pathname + url.search;
-        const requestBody = nextEvent.request?.body || null;
-        const hasBody = requestBody !== null &&
-          ["post", "put", "patch"].includes(method);
-
-        if (hasBody) {
-          testSteps.push(`
-    // Step ${stepNumber}: Setup mock for triggered request
-    server.use(
+      // FIRST: Setup mocks for network state that this click will trigger
+      const associatedNetworkState = networkStates.find(state => 
+        state.clickEventId === event.id.toString()
+      );
+      
+      if (associatedNetworkState && associatedNetworkState.networkEvents.length > 0) {
+        testSteps.push(`
+    // Step ${stepNumber}: Setup network state BEFORE click`);
+        
+        associatedNetworkState.networkEvents.forEach(networkEvent => {
+          const method = (networkEvent.method || "GET").toLowerCase();
+          const url = new URL(networkEvent.url!);
+          const fullPath = url.pathname + url.search;
+          const requestBody = networkEvent.request?.body || null;
+          const hasBody = requestBody !== null &&
+            ["post", "put", "patch"].includes(method);
+          
+          if (hasBody) {
+            testSteps.push(`    server.use(
       rest.${method}('*${fullPath}', async (req, res, ctx) => {
         const body = await req.text()
         if (body === ${JSON.stringify(requestBody)}) {
           return res(
-            ctx.status(${nextEvent.status}),
-            ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+            ctx.status(${networkEvent.status}),
+            ctx.json(${JSON.stringify(networkEvent.response?.data, null, 6)})
           )
         }
         return res(ctx.status(400), ctx.text('Request body mismatch'))
       })
-    )
-    
-    // Step ${stepNumber + 1}: Wait for network call to complete
-    await waitFor(() => {
-      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
-    })`);
-        } else {
-          testSteps.push(`
-    // Step ${stepNumber}: Setup mock for triggered request
-    server.use(
+    )`);
+          } else {
+            testSteps.push(`    server.use(
       rest.${method}('*${fullPath}', (req, res, ctx) => {
         return res(
-          ctx.status(${nextEvent.status}),
-          ctx.json(${JSON.stringify(nextEvent.response?.data, null, 8)})
+          ctx.status(${networkEvent.status}),
+          ctx.json(${JSON.stringify(networkEvent.response?.data, null, 6)})
         )
       })
-    )
-    
-    // Step ${stepNumber + 1}: Wait for network call to complete
-    await waitFor(() => {
-      expect(await screen.findByTestId('${event.testId}')).toBeInTheDocument()
-    })`);
-        }
-        stepNumber += 2;
-        i++;
+    )`);
+          }
+        });
+        stepNumber++;
       }
+
+      // SECOND: Now perform the click that will trigger the mocked network calls
+      testSteps.push(`
+    // Step ${stepNumber}: Click ${event.testId}
+    fireEvent.click(await screen.findByTestId('${event.testId}'))`);
+      stepNumber++;
+
+
     } else if (event.type === "assertion") {
       testSteps.push(`
     // Step ${stepNumber}: Assert ${event.testId} text content
     expect(await screen.findByTestId('${event.testId}')).toHaveTextContent('${
         event.elementText.replace(/'/g, "\\'")
       }')`);
-      stepNumber++;
-    } else if (event.type === "network-response" && event.url) {
-      const method = (event.method || "GET").toLowerCase();
-      const url = new URL(event.url);
-      const fullPath = url.pathname + url.search;
-      const requestBody = event.request?.body || null;
-      const hasBody = requestBody !== null &&
-        ["post", "put", "patch"].includes(method);
-
-      if (hasBody) {
-        testSteps.push(`
-    // Step ${stepNumber}: Setup mock for background request
-    server.use(
-      rest.${method}('*${fullPath}', async (req, res, ctx) => {
-        const body = await req.text()
-        if (body === ${JSON.stringify(requestBody)}) {
-          return res(
-            ctx.status(${event.status}),
-            ctx.json(${JSON.stringify(event.response?.data, null, 8)})
-          )
-        }
-        return res(ctx.status(400), ctx.text('Request body mismatch'))
-      })
-    )`);
-      } else {
-        testSteps.push(`
-    // Step ${stepNumber}: Setup mock for background request
-    server.use(
-      rest.${method}('*${fullPath}', (req, res, ctx) => {
-        return res(
-          ctx.status(${event.status}),
-          ctx.json(${JSON.stringify(event.response?.data, null, 8)})
-        )
-      })
-    )`);
-      }
       stepNumber++;
     }
   }
@@ -309,8 +314,6 @@ describe('${describe}', () => {
   })
 
   test('${testName}', async () => {
-    // Render component
-    render(<${componentName} />)
 ${testSteps.join("\n")}
   })
 })`;
@@ -768,7 +771,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
                 ? stopNetworkRecording
                 : startNetworkRecording}
               style={{
-                background: isNetworkRecording ? "#ff4444" : "#2196F3",
+                background: isNetworkRecording ? "#ff4444" : "#4CAF50",
                 color: "white",
                 border: "none",
                 padding: "4px 8px",
