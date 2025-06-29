@@ -76,56 +76,52 @@ That's it! The framework will overlay recording controls on your app.
 **Example generated test:**
 
 ```typescript
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { rest } from "msw";
-import { server } from "../mocks/server";
-import UserProfile from "./UserProfile";
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { rest } from 'msw'
+import { server } from '../mocks/server'
+import UserProfile from './UserProfile'
 
-describe("UserProfile Integration Tests", () => {
+describe('UserProfile Integration Tests', () => {
   beforeEach(() => {
-    server.listen();
-  });
+    server.listen()
+  })
 
   afterEach(() => {
-    server.resetHandlers();
-  });
+    server.resetHandlers()
+  })
 
   afterAll(() => {
-    server.close();
-  });
+    server.close()
+  })
 
-  test("should load user data when button clicked", async () => {
-    // Setup mock BEFORE rendering
+  test('should load user data when button clicked', async () => {
+    // Render component
+    render(<UserProfile />)
+
+    // Step 1: Setup network state BEFORE click
     server.use(
-      rest.get("*/api/users/1", (req, res, ctx) => {
+      rest.get('*/api/users/1', (req, res, ctx) => {
         return res(
           ctx.status(200),
-          ctx.json({ id: 1, name: "John Doe", email: "john@example.com" }),
-        );
-      }),
-    );
+          ctx.json({
+            "id": 1,
+            "name": "John Doe",
+            "email": "john@example.com"
+          })
+        )
+      })
+    )
 
-    render(<UserProfile />);
+    // Step 2: Click load-user-button
+    fireEvent.click(await screen.findByTestId('load-user-button'))
 
-    // Step 1: Click load-user button
-    const loadButton = await screen.findByTestId("load-user-button");
-    fireEvent.click(loadButton);
+    // Step 3: Assert user-name text content
+    expect(await screen.findByTestId('user-name')).toHaveTextContent('John Doe')
 
-    // Step 2: Assert loading state appears
-    expect(await screen.findByTestId("loading-spinner")).toHaveTextContent(
-      "Loading...",
-    );
-
-    // Step 3: Wait for data to load and assert final state
-    await waitFor(() => {
-      expect(screen.getByTestId("user-name")).toHaveTextContent("John Doe");
-    });
-
-    expect(await screen.findByTestId("user-email")).toHaveTextContent(
-      "john@example.com",
-    );
-  });
-});
+    // Step 4: Assert user-email text content
+    expect(await screen.findByTestId('user-email')).toHaveTextContent('john@example.com')
+  })
+})
 ```
 
 ## 🏗️ Framework Architecture
