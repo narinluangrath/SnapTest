@@ -173,7 +173,7 @@ export const handlers = [${handlers.join(",")}\n]`;
 }
 
 interface NetworkState {
-  clickEventId: string;
+  clickEventId: string | null; // null for initial network events before any clicks
   networkEvents: CombinedEvent[];
   validUntil: number;
 }
@@ -182,8 +182,14 @@ function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[]
   const networkStates: NetworkState[] = [];
   let currentClick: CombinedEvent | null = null;
   let currentNetworkEvents: CombinedEvent[] = [];
+  let initialNetworkEvents: CombinedEvent[] = [];
 
-  for (const event of combinedEvents) {
+  // Find first click to determine initial network events
+  const firstClickIndex = combinedEvents.findIndex(event => event.type === "click");
+  
+  for (let i = 0; i < combinedEvents.length; i++) {
+    const event = combinedEvents[i];
+    
     if (event.type === "click") {
       // Finish previous network state if exists
       if (currentClick) {
@@ -198,10 +204,24 @@ function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[]
       currentClick = event;
       currentNetworkEvents = [];
       
-    } else if (event.type === "network-response" && currentClick) {
-      // Associate this network event with the current click
-      currentNetworkEvents.push(event);
+    } else if (event.type === "network-response") {
+      if (firstClickIndex === -1 || i < firstClickIndex) {
+        // Network event happens before any clicks - add to initial events
+        initialNetworkEvents.push(event);
+      } else if (currentClick) {
+        // Associate this network event with the current click
+        currentNetworkEvents.push(event);
+      }
     }
+  }
+
+  // Add initial network state if there are network events before first click
+  if (initialNetworkEvents.length > 0) {
+    networkStates.unshift({
+      clickEventId: null, // null indicates initial network events
+      networkEvents: initialNetworkEvents,
+      validUntil: firstClickIndex !== -1 ? combinedEvents[firstClickIndex].timestamp : Infinity
+    });
   }
 
   // Handle final network state (no next click to invalidate it)
@@ -235,6 +255,46 @@ function generateTestCode(
   testSteps.push(`    // Render component
     render(<${componentName} />)`);
 
+  // Handle initial network events (before any clicks)
+  const initialNetworkState = networkStates.find(state => state.clickEventId === null);
+  if (initialNetworkState && initialNetworkState.networkEvents.length > 0) {
+    testSteps.push(`
+    // Step ${stepNumber}: Setup initial network state
+    server.use(`);
+    
+    initialNetworkState.networkEvents.forEach((networkEvent, index) => {
+      const method = (networkEvent.method || "GET").toLowerCase();
+      const url = new URL(networkEvent.url!);
+      const fullPath = url.pathname + url.search;
+      const requestBody = networkEvent.request?.body || null;
+      const hasBody = requestBody !== null &&
+        ["post", "put", "patch"].includes(method);
+      
+      if (hasBody) {
+        testSteps.push(`      rest.${method}('*${fullPath}', async (req, res, ctx) => {
+        const body = await req.text()
+        if (body === ${JSON.stringify(requestBody)}) {
+          return res(
+            ctx.status(${networkEvent.status}),
+            ctx.json(${JSON.stringify(networkEvent.response?.data, null, 8)})
+          )
+        }
+        return res(ctx.status(400), ctx.text('Request body mismatch'))
+      })${index < initialNetworkState.networkEvents.length - 1 ? ',' : ''}`);
+      } else {
+        testSteps.push(`      rest.${method}('*${fullPath}', (req, res, ctx) => {
+        return res(
+          ctx.status(${networkEvent.status}),
+          ctx.json(${JSON.stringify(networkEvent.response?.data, null, 8)})
+        )
+      })${index < initialNetworkState.networkEvents.length - 1 ? ',' : ''}`);
+      }
+    });
+    
+    testSteps.push(`    )`);
+    stepNumber++;
+  }
+
   for (const event of combinedEvents) {
     if (event.type === "click") {
       // FIRST: Setup mocks for network state that this click will trigger
@@ -244,7 +304,7 @@ function generateTestCode(
       
       if (associatedNetworkState && associatedNetworkState.networkEvents.length > 0) {
         testSteps.push(`
-    // Step ${stepNumber}: Setup network state BEFORE click`);
+    // Step ${stepNumber}: Setup network state BEFORE ${event.testId} click`);
         
         associatedNetworkState.networkEvents.forEach(networkEvent => {
           const method = (networkEvent.method || "GET").toLowerCase();

@@ -69,6 +69,18 @@ function MockUserApp() {
     setSelectedUserId(randomUserId);
   };
 
+  const nextUser = () => {
+    setSelectedUserId(prev => prev < 10 ? prev + 1 : 1);
+  };
+
+  const prevUser = () => {
+    setSelectedUserId(prev => prev > 1 ? prev - 1 : 10);
+  };
+
+  const loadFirstUser = () => {
+    setSelectedUserId(1);
+  };
+
   if (loading) {
     return (
       <div
@@ -109,24 +121,83 @@ function MockUserApp() {
       }}
     >
       <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <button
-          onClick={selectRandomUser}
-          data-test-id={loading
-            ? "random-user-button-loading"
-            : "random-user-button-ready"}
-          disabled={loading}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: loading ? "#ccc" : "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: loading ? "not-allowed" : "pointer",
-            marginBottom: "20px",
-          }}
-        >
-          {loading ? "Loading..." : "Select Random User"}
-        </button>
+        <p data-test-id="user-counter" style={{ marginBottom: "15px", color: "#666" }}>
+          Current user: {selectedUserId}/10
+        </p>
+        
+        <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+          <button
+            onClick={loadFirstUser}
+            data-test-id={loading
+              ? "load-first-user-button-loading"
+              : "load-first-user-button-ready"}
+            disabled={loading}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: loading ? "#ccc" : "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Loading..." : "First User"}
+          </button>
+
+          <button
+            onClick={prevUser}
+            data-test-id={loading
+              ? "prev-user-button-loading"
+              : "prev-user-button-ready"}
+            disabled={loading}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: loading ? "#ccc" : "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Loading..." : "← Previous"}
+          </button>
+
+          <button
+            onClick={nextUser}
+            data-test-id={loading
+              ? "next-user-button-loading"
+              : "next-user-button-ready"}
+            disabled={loading}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: loading ? "#ccc" : "#28a745",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Loading..." : "Next →"}
+          </button>
+
+          <button
+            onClick={selectRandomUser}
+            data-test-id={loading
+              ? "random-user-button-loading"
+              : "random-user-button-ready"}
+            disabled={loading}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: loading ? "#ccc" : "#ff6b6b",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Loading..." : "Random"}
+          </button>
+        </div>
       </div>
 
       {selectedUser && (
