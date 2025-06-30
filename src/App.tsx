@@ -32,6 +32,7 @@ function MockUserApp() {
   const [error, setError] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState(1);
   const [postsExpanded, setPostsExpanded] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -254,6 +255,21 @@ function MockUserApp() {
           >
             {loading ? "Loading..." : "Reload with XHR"}
           </button>
+
+          <button
+            onClick={() => setShowTestModal(true)}
+            data-test-id="test-modal-button"
+            style={{
+              padding: "10px 15px",
+              backgroundColor: "#9c27b0",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Test Modal
+          </button>
         </div>
       </div>
 
@@ -402,6 +418,64 @@ function MockUserApp() {
           </div>
         )}
       </div>
+
+      {/* Test Modal to demonstrate SnapTest UI stays on top */}
+      {showTestModal && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.7)",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onClick={() => setShowTestModal(false)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              backgroundColor: "white",
+              padding: "30px",
+              borderRadius: "12px",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)",
+              zIndex: 10000,
+              minWidth: "400px",
+              textAlign: "center",
+            }}
+          >
+            <h2 data-test-id="modal-title" style={{ marginTop: 0, marginBottom: "20px" }}>
+              Test Modal with High Z-Index
+            </h2>
+            <p data-test-id="modal-description" style={{ marginBottom: "20px", color: "#666" }}>
+              This modal has z-index: 10000, but SnapTest UI should still be visible on top with z-index: 2147483647!
+            </p>
+            <button
+              onClick={() => setShowTestModal(false)}
+              data-test-id="close-modal-button"
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "#007bff",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "14px",
+              }}
+            >
+              Close Modal
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -472,6 +472,36 @@ export const useSnapTest = () => {
 };
 
 function SnapTestProvider({ children }: SnapTestProviderProps) {
+  // Inject global styles to ensure SnapTest UI always stays on top
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.id = 'snaptest-override-styles';
+    styleElement.textContent = `
+      /* Ensure SnapTest UI elements always stay on top */
+      .snaptest-ui {
+        z-index: 2147483647 !important;
+        position: fixed !important;
+        pointer-events: auto !important;
+      }
+      
+      /* Minimal protection - only override what's necessary for positioning and visibility */
+      .snaptest-ui {
+        box-sizing: border-box !important;
+      }
+    `;
+    
+    if (!document.getElementById('snaptest-override-styles')) {
+      document.head.appendChild(styleElement);
+    }
+    
+    return () => {
+      const existingStyle = document.getElementById('snaptest-override-styles');
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+    };
+  }, []);
+
   // Network recording state
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
   const [isNetworkRecording, setIsNetworkRecording] = useState(false);
@@ -503,8 +533,8 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     while (current && current !== document.body) {
       if (current instanceof HTMLElement) {
         const style = window.getComputedStyle(current);
-        // Check if element has framework UI styling (fixed position with high z-index)
-        if (style.position === "fixed" && parseInt(style.zIndex) >= 999) {
+        // Check if element has framework UI styling (fixed position with maximum z-index)
+        if (style.position === "fixed" && parseInt(style.zIndex) >= 2147483647) {
           return true;
         }
       }
@@ -544,15 +574,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     }
   };
 
-  const handleMouseLeave = () => {
-    if (highlightedElement) {
-      highlightedElement.style.outline = "";
-      highlightedElement.style.outlineOffset = "";
-      setHighlightedElement(null);
-    }
-  };
+  // Removed handleMouseLeave since we're now tracking globally
 
-  const handleClick = (event: React.MouseEvent) => {
+  const handleClick = (event: MouseEvent) => {
     if (!isEventRecording) return;
 
     const target = event.target as Element;
@@ -569,7 +593,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       const timestamp = new Date().toISOString();
       const elementText = elementWithTestId.innerText?.trim() || "";
       const tagName = elementWithTestId.tagName.toLowerCase();
-      const elementType = elementWithTestId.type || null;
+      const elementType = (elementWithTestId as HTMLInputElement).type || null;
       const rect = elementWithTestId.getBoundingClientRect();
 
       if (event.ctrlKey) {
@@ -795,24 +819,20 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     };
   }, [isNetworkRecording]);
 
-  // Mouse event listeners effect
+  // Mouse event listeners effect - now global across entire document
   useEffect(() => {
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener("mousemove", handleMouseMove);
-      container.addEventListener("mouseleave", handleMouseLeave);
-      container.addEventListener("click", handleClick, true);
+    // Add event listeners to document for global coverage
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("click", handleClick, true);
 
-      return () => {
-        container.removeEventListener("mousemove", handleMouseMove);
-        container.removeEventListener("mouseleave", handleMouseLeave);
-        container.removeEventListener("click", handleClick, true);
-        if (highlightedElement) {
-          highlightedElement.style.outline = "";
-          highlightedElement.style.outlineOffset = "";
-        }
-      };
-    }
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("click", handleClick, true);
+      if (highlightedElement) {
+        highlightedElement.style.outline = "";
+        highlightedElement.style.outlineOffset = "";
+      }
+    };
   }, [highlightedElement, isEventRecording]);
 
   const contextValue = {
@@ -835,6 +855,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
         {/* Event Recording Panel */}
         <div
+          className="snaptest-ui"
           style={{
             position: "fixed",
             top: "10px",
@@ -845,12 +866,13 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             borderRadius: "8px",
             fontSize: "12px",
             fontFamily: "monospace",
-            zIndex: 1000,
+            zIndex: 2147483647,
             minWidth: "200px",
+            pointerEvents: "auto",
           }}
         >
           <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
-            Event Recording
+            Event Recording (Global)
           </div>
           <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
             Events: {recordedEvents.filter((e) => e.type === "click").length}
@@ -903,6 +925,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
         {/* Network Recording Panel */}
         <div
+          className="snaptest-ui"
           style={{
             position: "fixed",
             top: "10px",
@@ -913,8 +936,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             borderRadius: "8px",
             fontSize: "12px",
             fontFamily: "monospace",
-            zIndex: 1000,
+            zIndex: 2147483647,
             minWidth: "200px",
+            pointerEvents: "auto",
           }}
         >
           <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
@@ -960,6 +984,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
         {recordedEvents.length > 0 && (
           <div
+            className="snaptest-ui"
             style={{
               position: "fixed",
               bottom: "10px",
@@ -971,9 +996,10 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
               borderRadius: "8px",
               fontSize: "11px",
               fontFamily: "monospace",
-              zIndex: 1000,
+              zIndex: 2147483647,
               maxHeight: "200px",
               overflowY: "auto",
+              pointerEvents: "auto",
             }}
           >
             <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
@@ -1024,6 +1050,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
         {highlightedElement && (
           <div
+            className="snaptest-ui"
             style={{
               position: "fixed",
               bottom: "10px",
@@ -1035,7 +1062,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
               borderRadius: "8px",
               fontSize: "12px",
               fontFamily: "monospace",
-              zIndex: 1000,
+              zIndex: 2147483647,
               pointerEvents: "none",
               maxHeight: "200px",
               wordBreak: "break-word",
@@ -1073,6 +1100,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
         {networkEvents.length > 0 && (
           <div
+            className="snaptest-ui"
             style={{
               position: "fixed",
               bottom: "10px",
@@ -1086,7 +1114,8 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
               fontSize: "11px",
               fontFamily: "monospace",
               overflow: "auto",
-              zIndex: 999,
+              zIndex: 2147483647,
+              pointerEvents: "auto",
             }}
           >
             <div>
@@ -1212,6 +1241,7 @@ function SnapTestGenerator() {
 
   return (
     <div
+      className="snaptest-ui"
       style={{
         position: "fixed",
         top: "10px",
@@ -1222,7 +1252,8 @@ function SnapTestGenerator() {
         borderRadius: "8px",
         fontSize: "12px",
         fontFamily: "monospace",
-        zIndex: 1000,
+        zIndex: 2147483647,
+        pointerEvents: "auto",
         minWidth: "200px",
         maxWidth: showOutput ? "600px" : "200px",
         maxHeight: showOutput ? "80vh" : "auto",
