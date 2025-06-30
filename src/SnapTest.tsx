@@ -477,6 +477,19 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Platform detection for modifier keys
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   
+  // Fallback UUID generator for environments where crypto.randomUUID is not available
+  const generateUUID = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback UUID generator
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+  
   // Inject global styles to ensure SnapTest UI always stays on top
   useEffect(() => {
     const styleElement = document.createElement('style');
@@ -707,7 +720,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     // Intercept fetch
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
-      const requestId = crypto.randomUUID();
+      const requestId = generateUUID();
       const [resource, config] = args;
 
       const url = typeof resource === "string" ? resource : resource.url;
@@ -807,7 +820,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 
     XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) {
-      this._snapTestRequestId = crypto.randomUUID();
+      this._snapTestRequestId = generateUUID();
       this._snapTestMethod = method;
       this._snapTestUrl = url.toString();
       this._snapTestHeaders = {};
