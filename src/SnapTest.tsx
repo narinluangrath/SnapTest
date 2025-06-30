@@ -472,6 +472,9 @@ export const useSnapTest = () => {
 };
 
 function SnapTestProvider({ children }: SnapTestProviderProps) {
+  // Platform detection for modifier keys
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  
   // Inject global styles to ensure SnapTest UI always stays on top
   useEffect(() => {
     const styleElement = document.createElement('style');
@@ -596,7 +599,10 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       const elementType = (elementWithTestId as HTMLInputElement).type || null;
       const rect = elementWithTestId.getBoundingClientRect();
 
-      if (event.ctrlKey) {
+      // Use Command key on Mac, Ctrl key on other platforms
+      const isAssertionClick = isMac ? event.metaKey : event.ctrlKey;
+      
+      if (isAssertionClick) {
         event.stopPropagation();
 
         setAssertionHighlight(elementWithTestId);
@@ -918,7 +924,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           )}
           {isEventRecording && (
             <div style={{ color: "#888", fontSize: "10px", marginTop: "4px" }}>
-              Ctrl+Click for assertions
+              {isMac ? 'Cmd+Click' : 'Ctrl+Click'} for assertions
             </div>
           )}
         </div>
