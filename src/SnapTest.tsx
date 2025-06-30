@@ -455,6 +455,8 @@ interface SnapTestContextType {
   startEventRecording: () => void;
   stopEventRecording: () => void;
   clearEvents: () => void;
+  isConsoleLogging: boolean;
+  toggleConsoleLogging: () => void;
 }
 
 const SnapTestContext = createContext<SnapTestContextType | null>(
@@ -519,6 +521,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     null,
   );
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Console logging state (enabled by default)
+  const [isConsoleLogging, setIsConsoleLogging] = useState(true);
 
   const findClosestTestId = (element: Element): Element | null => {
     let current = element;
@@ -634,6 +639,18 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         };
 
         setRecordedEvents((prev) => [...prev, eventData]);
+        
+        // Console logging
+        if (isConsoleLogging) {
+          console.group(`🔍 SnapTest Assertion Recorded`);
+          console.log(`Test ID: ${testId}`);
+          console.log(`Element: ${tagName}${elementType ? `[${elementType}]` : ''}`);
+          console.log(`Text: "${elementText}"`);
+          console.log(`Timestamp: ${timestamp}`);
+          console.log(`Position: (${event.clientX}, ${event.clientY})`);
+          console.groupEnd();
+        }
+        
         return;
       }
 
@@ -656,6 +673,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       };
 
       setRecordedEvents((prev) => [...prev, eventData]);
+      
+      // Console logging
+      if (isConsoleLogging) {
+        console.group(`👆 SnapTest Click Recorded`);
+        console.log(`Test ID: ${testId}`);
+        console.log(`Element: ${tagName}${elementType ? `[${elementType}]` : ''}`);
+        if (elementText) console.log(`Text: "${elementText}"`);
+        console.log(`Timestamp: ${timestamp}`);
+        console.log(`Position: (${event.clientX}, ${event.clientY})`);
+        console.groupEnd();
+      }
     }
   };
 
@@ -669,6 +697,8 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   };
   const stopNetworkRecording = () => setIsNetworkRecording(false);
   const clearNetworkEvents = () => setNetworkEvents([]);
+
+  const toggleConsoleLogging = () => setIsConsoleLogging(prev => !prev);
 
   // Network interception effect
   useEffect(() => {
@@ -695,6 +725,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       };
 
       setNetworkEvents((prev) => [...prev, requestEvent]);
+      
+      // Console logging for request
+      if (isConsoleLogging) {
+        console.group(`🌐 SnapTest Network Request (fetch)`);
+        console.log(`Method: ${method}`);
+        console.log(`URL: ${url}`);
+        if (requestEvent.request?.body) console.log(`Body: ${requestEvent.request.body}`);
+        console.log(`Request ID: ${requestId}`);
+        console.log(`Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`);
+        console.groupEnd();
+      }
 
       try {
         const response = await originalFetch(...args);
@@ -721,6 +762,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           };
 
           setNetworkEvents((prev) => [...prev, responseEvent]);
+          
+          // Console logging for response
+          if (isConsoleLogging) {
+            console.group(`📡 SnapTest Network Response (fetch)`);
+            console.log(`Status: ${response.status} ${response.statusText}`);
+            console.log(`URL: ${url}`);
+            console.log(`Response Data:`, responseData);
+            console.log(`Request ID: ${requestId}`);
+            console.log(`Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`);
+            console.groupEnd();
+          }
         } catch (error) {}
 
         return response;
@@ -734,6 +786,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         };
 
         setNetworkEvents((prev) => [...prev, errorEvent]);
+        
+        // Console logging for error
+        if (isConsoleLogging) {
+          console.group(`❌ SnapTest Network Error (fetch)`);
+          console.error(`Error: ${(error as Error).message}`);
+          console.log(`URL: ${url}`);
+          console.log(`Request ID: ${requestId}`);
+          console.log(`Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`);
+          console.groupEnd();
+        }
+        
         throw error;
       }
     };
@@ -778,6 +841,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         };
 
         setNetworkEvents((prev) => [...prev, requestEvent]);
+        
+        // Console logging for XHR request
+        if (isConsoleLogging) {
+          console.group(`🌐 SnapTest Network Request (XHR)`);
+          console.log(`Method: ${method}`);
+          console.log(`URL: ${url}`);
+          if (requestEvent.request?.body) console.log(`Body: ${requestEvent.request.body}`);
+          console.log(`Request ID: ${requestId}`);
+          console.log(`Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`);
+          console.groupEnd();
+        }
 
         this.addEventListener('load', () => {
           let responseData;
@@ -799,6 +873,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           };
 
           setNetworkEvents((prev) => [...prev, responseEvent]);
+          
+          // Console logging for XHR response
+          if (isConsoleLogging) {
+            console.group(`📡 SnapTest Network Response (XHR)`);
+            console.log(`Status: ${this.status} ${this.statusText}`);
+            console.log(`URL: ${url}`);
+            console.log(`Response Data:`, responseData);
+            console.log(`Request ID: ${requestId}`);
+            console.log(`Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`);
+            console.groupEnd();
+          }
         });
 
         this.addEventListener('error', () => {
@@ -811,6 +896,16 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           };
 
           setNetworkEvents((prev) => [...prev, errorEvent]);
+          
+          // Console logging for XHR error
+          if (isConsoleLogging) {
+            console.group(`❌ SnapTest Network Error (XHR)`);
+            console.error(`Error: ${this.statusText || 'XMLHttpRequest error'}`);
+            console.log(`URL: ${url}`);
+            console.log(`Request ID: ${requestId}`);
+            console.log(`Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`);
+            console.groupEnd();
+          }
         });
       }
 
@@ -852,6 +947,8 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     startEventRecording,
     stopEventRecording,
     clearEvents,
+    isConsoleLogging,
+    toggleConsoleLogging,
   };
 
   return (
@@ -917,6 +1014,23 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
               }}
             >
               Clear ({recordedEvents.length})
+            </button>
+          </div>
+          <div style={{ marginBottom: "8px" }}>
+            <button
+              onClick={toggleConsoleLogging}
+              style={{
+                background: isConsoleLogging ? "#4CAF50" : "#666",
+                color: "white",
+                border: "none",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+                width: "100%",
+              }}
+            >
+              Console Logging: {isConsoleLogging ? "ON" : "OFF"}
             </button>
           </div>
           {isEventRecording && (
@@ -1200,7 +1314,7 @@ interface GeneratedTestSuite {
 }
 
 function SnapTestGenerator() {
-  const { recordedEvents: eventHistory, networkEvents: networkHistory } =
+  const { recordedEvents: eventHistory, networkEvents: networkHistory, isConsoleLogging } =
     useSnapTest();
   const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(
     null,
