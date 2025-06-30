@@ -81,6 +81,45 @@ function MockUserApp() {
     setSelectedUserId(1);
   };
 
+  const fetchUserWithXHR = () => {
+    setLoading(true);
+    setError(null);
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `https://jsonplaceholder.typicode.com/users/${selectedUserId}`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        try {
+          const userData: User = JSON.parse(xhr.responseText);
+          setUsers(prevUsers => {
+            const newUsers = [...prevUsers];
+            const index = newUsers.findIndex(u => u.id === userData.id);
+            if (index !== -1) {
+              newUsers[index] = userData;
+            } else {
+              newUsers.push(userData);
+            }
+            return newUsers;
+          });
+        } catch (err) {
+          setError('Failed to parse user data');
+        }
+      } else {
+        setError(`Failed to fetch user: ${xhr.status}`);
+      }
+      setLoading(false);
+    };
+    
+    xhr.onerror = () => {
+      setError('Network error occurred');
+      setLoading(false);
+    };
+    
+    xhr.send();
+  };
+
   if (loading) {
     return (
       <div
@@ -196,6 +235,24 @@ function MockUserApp() {
             }}
           >
             {loading ? "Loading..." : "Random"}
+          </button>
+
+          <button
+            onClick={fetchUserWithXHR}
+            data-test-id={loading
+              ? "xhr-user-button-loading"
+              : "xhr-user-button-ready"}
+            disabled={loading}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: loading ? "#ccc" : "#ffc107",
+              color: "black",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Loading..." : "Reload with XHR"}
           </button>
         </div>
       </div>

@@ -7,6 +7,16 @@ import {
   useState,
 } from "react";
 
+// Extend XMLHttpRequest type to include our custom properties
+declare global {
+  interface XMLHttpRequest {
+    _snapTestRequestId?: string;
+    _snapTestMethod?: string;
+    _snapTestUrl?: string;
+    _snapTestHeaders?: Record<string, string>;
+  }
+}
+
 // Test Generation Logic (from testGenerator.ts)
 interface TestOptions {
   testName?: string;
@@ -634,6 +644,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   useEffect(() => {
     if (!isNetworkRecording) return;
 
+    // Intercept fetch
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const requestId = crypto.randomUUID();
@@ -697,7 +708,91 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       }
     };
 
-    return () => window.fetch = originalFetch;
+    // Intercept XMLHttpRequest
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+
+    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) {
+      this._snapTestRequestId = crypto.randomUUID();
+      this._snapTestMethod = method;
+      this._snapTestUrl = url.toString();
+      this._snapTestHeaders = {};
+      
+      return originalXHROpen.call(this, method, url, async, username, password);
+    };
+
+    XMLHttpRequest.prototype.setRequestHeader = function(name: string, value: string) {
+      if (!this._snapTestHeaders) {
+        this._snapTestHeaders = {};
+      }
+      this._snapTestHeaders[name] = value;
+      return originalXHRSetRequestHeader.call(this, name, value);
+    };
+
+    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+      const requestId = this._snapTestRequestId;
+      const method = this._snapTestMethod;
+      const url = this._snapTestUrl;
+
+      if (requestId && method && url) {
+        const requestEvent: NetworkEvent = {
+          id: requestId,
+          type: "network-request",
+          method,
+          url,
+          timestamp: Date.now(),
+          request: {
+            body: body ? body.toString() : null,
+          },
+        };
+
+        setNetworkEvents((prev) => [...prev, requestEvent]);
+
+        this.addEventListener('load', () => {
+          let responseData;
+          try {
+            responseData = JSON.parse(this.responseText);
+          } catch {
+            responseData = this.responseText;
+          }
+
+          const responseEvent: NetworkEvent = {
+            id: requestId,
+            type: "network-response",
+            status: this.status,
+            url,
+            timestamp: Date.now(),
+            response: {
+              data: responseData,
+            },
+          };
+
+          setNetworkEvents((prev) => [...prev, responseEvent]);
+        });
+
+        this.addEventListener('error', () => {
+          const errorEvent: NetworkEvent = {
+            id: requestId,
+            type: "network-error",
+            url,
+            timestamp: Date.now(),
+            error: this.statusText || 'XMLHttpRequest error',
+          };
+
+          setNetworkEvents((prev) => [...prev, errorEvent]);
+        });
+      }
+
+      return originalXHRSend.call(this, body);
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+      XMLHttpRequest.prototype.open = originalXHROpen;
+      XMLHttpRequest.prototype.send = originalXHRSend;
+      XMLHttpRequest.prototype.setRequestHeader = originalXHRSetRequestHeader;
+    };
   }, [isNetworkRecording]);
 
   // Mouse event listeners effect
