@@ -1,11 +1,12 @@
 import {
   createContext,
-  ReactNode,
   useContext,
   useEffect,
   useRef,
   useState,
-} from "react";
+  ReactNode,
+  useCallback,
+} from 'react';
 
 // Extend XMLHttpRequest type to include our custom properties
 declare global {
@@ -22,6 +23,8 @@ interface TestOptions {
   testName?: string;
   componentName?: string;
   describe?: string;
+  error?: string;
+  status?: number;
 }
 
 interface GeneratedTest {
@@ -46,11 +49,11 @@ interface CombinedEvent {
     y: number;
   };
   type:
-    | "click"
-    | "assertion"
-    | "network-request"
-    | "network-response"
-    | "network-error";
+    | 'click'
+    | 'assertion'
+    | 'network-request'
+    | 'network-response'
+    | 'network-error';
   method?: string;
   url?: string;
   request?: {
@@ -77,38 +80,42 @@ interface GeneratedTestSuite extends GeneratedTest {
 function generateTest(
   eventHistory: EventHistoryItem[],
   networkHistory: NetworkHistoryItem[],
-  options: TestOptions = {},
+  options: TestOptions = {}
 ): GeneratedTest {
   const {
-    testName = "should handle user interactions correctly",
-    componentName = "MyComponent",
-    describe = "MyComponent Integration Tests",
+    testName = 'should handle user interactions correctly',
+    componentName = 'MyComponent',
+    describe = 'MyComponent Integration Tests',
   } = options;
 
   const combinedEvents: CombinedEvent[] = [
-    ...eventHistory.map((event): CombinedEvent => ({
-      ...event,
-      type: event.type,
-      timestamp: new Date(event.timestamp).getTime(),
-    })),
-    ...networkHistory.map((event): CombinedEvent => ({
-      id: event.id.toString(),
-      testId: "",
-      elementText: "",
-      tagName: "",
-      elementType: null,
-      timestamp: event.timestamp,
-      type: event.type as
-        | "network-request"
-        | "network-response"
-        | "network-error",
-      method: event.method,
-      url: event.url,
-      request: event.request,
-      response: event.response,
-      status: event.status,
-      error: event.error,
-    })),
+    ...eventHistory.map(
+      (event): CombinedEvent => ({
+        ...event,
+        type: event.type,
+        timestamp: new Date(event.timestamp).getTime(),
+      })
+    ),
+    ...networkHistory.map(
+      (event): CombinedEvent => ({
+        id: event.id.toString(),
+        testId: '',
+        elementText: '',
+        tagName: '',
+        elementType: null,
+        timestamp: event.timestamp,
+        type: event.type as
+          | 'network-request'
+          | 'network-response'
+          | 'network-error',
+        method: event.method,
+        url: event.url,
+        request: event.request,
+        response: event.response,
+        status: event.status,
+        error: event.error,
+      })
+    ),
   ].sort((a, b) => a.timestamp - b.timestamp);
 
   const mswHandlers = generateMSWHandlers(networkHistory);
@@ -129,8 +136,8 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
   const defaultHandlers = new Map();
 
   networkHistory.forEach((event) => {
-    if (event.type === "network-response") {
-      const method = event.method || "GET";
+    if (event.type === 'network-response') {
+      const method = event.method || 'GET';
       const url = new URL(event.url);
       const fullPath = url.pathname + url.search;
       const requestBody = event.request?.body || null;
@@ -151,8 +158,9 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
 
   const handlers: string[] = [];
   defaultHandlers.forEach((handler) => {
-    const hasBody = handler.requestBody !== null &&
-      ["post", "put", "patch"].includes(handler.method);
+    const hasBody =
+      handler.requestBody !== null &&
+      ['post', 'put', 'patch'].includes(handler.method);
 
     if (hasBody) {
       handlers.push(`
@@ -179,7 +187,7 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
 
   return `import { rest } from 'msw'
 
-export const handlers = [${handlers.join(",")}\n]`;
+export const handlers = [${handlers.join(',')}\n]`;
 }
 
 interface NetworkState {
@@ -188,33 +196,36 @@ interface NetworkState {
   validUntil: number;
 }
 
-function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[] {
+function correlateNetworkStates(
+  combinedEvents: CombinedEvent[]
+): NetworkState[] {
   const networkStates: NetworkState[] = [];
   let currentClick: CombinedEvent | null = null;
   let currentNetworkEvents: CombinedEvent[] = [];
-  let initialNetworkEvents: CombinedEvent[] = [];
+  const initialNetworkEvents: CombinedEvent[] = [];
 
   // Find first click to determine initial network events
-  const firstClickIndex = combinedEvents.findIndex(event => event.type === "click");
-  
+  const firstClickIndex = combinedEvents.findIndex(
+    (event) => event.type === 'click'
+  );
+
   for (let i = 0; i < combinedEvents.length; i++) {
     const event = combinedEvents[i];
-    
-    if (event.type === "click") {
+
+    if (event.type === 'click') {
       // Finish previous network state if exists
       if (currentClick) {
         networkStates.push({
           clickEventId: currentClick.id.toString(),
           networkEvents: [...currentNetworkEvents],
-          validUntil: event.timestamp
+          validUntil: event.timestamp,
         });
       }
-      
+
       // Start new network state
       currentClick = event;
       currentNetworkEvents = [];
-      
-    } else if (event.type === "network-response") {
+    } else if (event.type === 'network-response') {
       if (firstClickIndex === -1 || i < firstClickIndex) {
         // Network event happens before any clicks - add to initial events
         initialNetworkEvents.push(event);
@@ -230,7 +241,10 @@ function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[]
     networkStates.unshift({
       clickEventId: null, // null indicates initial network events
       networkEvents: initialNetworkEvents,
-      validUntil: firstClickIndex !== -1 ? combinedEvents[firstClickIndex].timestamp : Infinity
+      validUntil:
+        firstClickIndex !== -1
+          ? combinedEvents[firstClickIndex].timestamp
+          : Infinity,
     });
   }
 
@@ -239,7 +253,7 @@ function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[]
     networkStates.push({
       clickEventId: currentClick.id.toString(),
       networkEvents: [...currentNetworkEvents],
-      validUntil: Infinity
+      validUntil: Infinity,
     });
   }
 
@@ -248,7 +262,7 @@ function correlateNetworkStates(combinedEvents: CombinedEvent[]): NetworkState[]
 
 function generateTestCode(
   combinedEvents: CombinedEvent[],
-  { testName, componentName, describe }: Required<TestOptions>,
+  { testName, componentName, describe }: Required<TestOptions>
 ): string {
   const imports = [
     "import { render, screen, fireEvent, waitFor } from '@testing-library/react'",
@@ -266,20 +280,22 @@ function generateTestCode(
     render(<${componentName} />)`);
 
   // Handle initial network events (before any clicks)
-  const initialNetworkState = networkStates.find(state => state.clickEventId === null);
+  const initialNetworkState = networkStates.find(
+    (state) => state.clickEventId === null
+  );
   if (initialNetworkState && initialNetworkState.networkEvents.length > 0) {
     testSteps.push(`
     // Step ${stepNumber}: Setup initial network state
     server.use(`);
-    
+
     initialNetworkState.networkEvents.forEach((networkEvent, index) => {
-      const method = (networkEvent.method || "GET").toLowerCase();
+      const method = (networkEvent.method || 'GET').toLowerCase();
       const url = new URL(networkEvent.url!);
       const fullPath = url.pathname + url.search;
       const requestBody = networkEvent.request?.body || null;
-      const hasBody = requestBody !== null &&
-        ["post", "put", "patch"].includes(method);
-      
+      const hasBody =
+        requestBody !== null && ['post', 'put', 'patch'].includes(method);
+
       if (hasBody) {
         testSteps.push(`      rest.${method}('*${fullPath}', async (req, res, ctx) => {
         const body = await req.text()
@@ -300,30 +316,33 @@ function generateTestCode(
       })${index < initialNetworkState.networkEvents.length - 1 ? ',' : ''}`);
       }
     });
-    
+
     testSteps.push(`    )`);
     stepNumber++;
   }
 
   for (const event of combinedEvents) {
-    if (event.type === "click") {
+    if (event.type === 'click') {
       // FIRST: Setup mocks for network state that this click will trigger
-      const associatedNetworkState = networkStates.find(state => 
-        state.clickEventId === event.id.toString()
+      const associatedNetworkState = networkStates.find(
+        (state) => state.clickEventId === event.id.toString()
       );
-      
-      if (associatedNetworkState && associatedNetworkState.networkEvents.length > 0) {
+
+      if (
+        associatedNetworkState &&
+        associatedNetworkState.networkEvents.length > 0
+      ) {
         testSteps.push(`
     // Step ${stepNumber}: Setup network state BEFORE ${event.testId} click`);
-        
-        associatedNetworkState.networkEvents.forEach(networkEvent => {
-          const method = (networkEvent.method || "GET").toLowerCase();
+
+        associatedNetworkState.networkEvents.forEach((networkEvent) => {
+          const method = (networkEvent.method || 'GET').toLowerCase();
           const url = new URL(networkEvent.url!);
           const fullPath = url.pathname + url.search;
           const requestBody = networkEvent.request?.body || null;
-          const hasBody = requestBody !== null &&
-            ["post", "put", "patch"].includes(method);
-          
+          const hasBody =
+            requestBody !== null && ['post', 'put', 'patch'].includes(method);
+
           if (hasBody) {
             testSteps.push(`    server.use(
       rest.${method}('*${fullPath}', async (req, res, ctx) => {
@@ -356,19 +375,17 @@ function generateTestCode(
     // Step ${stepNumber}: Click ${event.testId}
     fireEvent.click(await screen.findByTestId('${event.testId}'))`);
       stepNumber++;
-
-
-    } else if (event.type === "assertion") {
+    } else if (event.type === 'assertion') {
       testSteps.push(`
     // Step ${stepNumber}: Assert ${event.testId} text content
-    expect(await screen.findByTestId('${event.testId}')).toHaveTextContent('${
-        event.elementText.replace(/'/g, "\\'")
-      }')`);
+    expect(await screen.findByTestId('${
+      event.testId
+    }')).toHaveTextContent('${event.elementText.replace(/'/g, "\\'")}')`);
       stepNumber++;
     }
   }
 
-  const testCode = `${imports.join("\n")}
+  const testCode = `${imports.join('\n')}
 
 describe('${describe}', () => {
   beforeEach(() => {
@@ -384,22 +401,23 @@ describe('${describe}', () => {
   })
 
   test('${testName}', async () => {
-${testSteps.join("\n")}
+${testSteps.join('\n')}
   })
 })`;
 
   return testCode;
 }
 
-function camelCase(str: string): string {
-  return str.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase())
+function _camelCase(str: string): string {
+  return str
+    .replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
     .replace(/^[a-z]/, (match) => match.toLowerCase());
 }
 
 export function generateTestSuite(
   eventHistory: EventHistoryItem[],
   networkHistory: NetworkHistoryItem[],
-  options: TestOptions = {},
+  options: TestOptions = {}
 ): GeneratedTestSuite {
   const result = generateTest(eventHistory, networkHistory, options);
 
@@ -407,14 +425,15 @@ export function generateTestSuite(
     ...result,
     summary: {
       totalEvents: eventHistory.length,
-      totalNetworkCalls:
-        networkHistory.filter((e) => e.type === "network-request").length,
+      totalNetworkCalls: networkHistory.filter(
+        (e) => e.type === 'network-request'
+      ).length,
       uniqueTestIds: [...new Set(eventHistory.map((e) => e.testId))],
       uniqueEndpoints: [
         ...new Set(
-          networkHistory.filter((e) => e.type === "network-request").map((e) =>
-            e.url
-          ),
+          networkHistory
+            .filter((e) => e.type === 'network-request')
+            .map((e) => e.url)
         ),
       ],
     },
@@ -433,7 +452,7 @@ interface RecordedEvent {
   elementText: string;
   tagName: string;
   elementType?: string | null;
-  type: "click" | "assertion";
+  type: 'click' | 'assertion';
   position: {
     x: number;
     y: number;
@@ -445,7 +464,7 @@ interface RecordedEvent {
 }
 
 interface SnapTestContextType {
-  networkEvents: NetworkEvent[];
+  networkEvents: NetworkHistoryItem[];
   isNetworkRecording: boolean;
   startNetworkRecording: () => void;
   stopNetworkRecording: () => void;
@@ -459,16 +478,12 @@ interface SnapTestContextType {
   toggleConsoleLogging: () => void;
 }
 
-const SnapTestContext = createContext<SnapTestContextType | null>(
-  null,
-);
+const SnapTestContext = createContext<SnapTestContextType | null>(null);
 
 export const useSnapTest = () => {
   const context = useContext(SnapTestContext);
   if (!context) {
-    throw new Error(
-      "useSnapTest must be used within a SnapTestProvider",
-    );
+    throw new Error('useSnapTest must be used within a SnapTestProvider');
   }
   return context;
 };
@@ -476,20 +491,20 @@ export const useSnapTest = () => {
 function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Platform detection for modifier keys
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-  
+
   // Fallback UUID generator for environments where crypto.randomUUID is not available
-  const generateUUID = () => {
+  const generateUUID = useCallback(() => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
     // Fallback UUID generator
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === 'x' ? r : (r % 4) + 8;
       return v.toString(16);
     });
-  };
-  
+  }, []);
+
   // Inject global styles to ensure SnapTest UI always stays on top
   useEffect(() => {
     const styleElement = document.createElement('style');
@@ -501,17 +516,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         position: fixed !important;
         pointer-events: auto !important;
       }
-      
+
       /* Minimal protection - only override what's necessary for positioning and visibility */
       .snaptest-ui {
         box-sizing: border-box !important;
       }
     `;
-    
+
     if (!document.getElementById('snaptest-override-styles')) {
       document.head.appendChild(styleElement);
     }
-    
+
     return () => {
       const existingStyle = document.getElementById('snaptest-override-styles');
       if (existingStyle) {
@@ -521,27 +536,44 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   }, []);
 
   // Network recording state
-  const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
+  const [networkEvents, setNetworkEvents] = useState<NetworkHistoryItem[]>([]);
   const [isNetworkRecording, setIsNetworkRecording] = useState(false);
 
   // Event recording state
   const [highlightedElement, setHighlightedElement] = useState<Element | null>(
-    null,
+    null
   );
   const [recordedEvents, setRecordedEvents] = useState<RecordedEvent[]>([]);
   const [isEventRecording, setIsEventRecording] = useState(false);
-  const [assertionHighlight, setAssertionHighlight] = useState<Element | null>(
-    null,
+  const [_assertionHighlight, setAssertionHighlight] = useState<Element | null>(
+    null
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Console logging state (enabled by default)
   const [isConsoleLogging, setIsConsoleLogging] = useState(true);
 
+  // Track all potential event targets (including portals and modals)
+  const eventTargetsRef = useRef<Set<Element>>(new Set());
+  const mutationObserverRef = useRef<MutationObserver | null>(null);
+  const originalStopPropagationRef = useRef<(() => void) | null>(null);
+  const originalStopImmediatePropagationRef = useRef<(() => void) | null>(null);
+
+  // Cache element info to handle disappearing elements (dropdowns, modals)
+  const hoveredElementInfoRef = useRef<{
+    element: Element;
+    testId: string;
+    elementText: string;
+    tagName: string;
+    elementType: string | null;
+    rect: DOMRect;
+    timestamp: number;
+  } | null>(null);
+
   const findClosestTestId = (element: Element): Element | null => {
-    let current = element;
+    let current: Element | null = element;
     while (current && current !== document.body) {
-      if (current.getAttribute && current.getAttribute("data-test-id")) {
+      if (current.getAttribute && current.getAttribute('data-test-id')) {
         return current;
       }
       current = current.parentElement;
@@ -550,155 +582,366 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   };
 
   const isWithinFrameworkUI = (element: Element): boolean => {
-    let current = element;
+    let current: Element | null = element;
     while (current && current !== document.body) {
-      if (current instanceof HTMLElement) {
-        const style = window.getComputedStyle(current);
-        // Check if element has framework UI styling (fixed position with maximum z-index)
-        if (style.position === "fixed" && parseInt(style.zIndex) >= 2147483647) {
-          return true;
-        }
+      if (current.classList && current.classList.contains('snaptest-ui')) {
+        return true;
       }
       current = current.parentElement;
     }
     return false;
   };
 
-  const handleMouseMove = (event: MouseEvent) => {
-    const target = event.target as Element;
+  // Enhanced portal and modal detection
+  const detectEventTargets = useCallback(() => {
+    const targets = new Set<Element>();
 
-    // Ignore hovers within framework UI panels
-    if (isWithinFrameworkUI(target)) {
-      // Clear any existing highlight when entering framework UI
-      if (highlightedElement) {
-        (highlightedElement as HTMLElement).style.outline = "";
-        (highlightedElement as HTMLElement).style.outlineOffset = "";
-        setHighlightedElement(null);
+    // Always include document and body
+    targets.add(document.documentElement);
+    targets.add(document.body);
+
+    // Look for common portal containers
+    const portalSelectors = [
+      '[data-testid*="portal"]',
+      '[class*="portal"]',
+      '[class*="modal"]',
+      '[class*="dialog"]',
+      '[class*="popover"]',
+      '[class*="tooltip"]',
+      '[class*="overlay"]',
+      '[role="dialog"]',
+      '[role="alertdialog"]',
+      '[role="tooltip"]',
+      '[aria-modal="true"]',
+      // React Portal common containers
+      '#portal-root',
+      '#modal-root',
+      '#tooltip-root',
+      '.ReactModalPortal',
+      // Material-UI portals
+      '[class*="MuiPortal"]',
+      '[class*="MuiModal"]',
+      '[class*="MuiDialog"]',
+      // Ant Design
+      '[class*="ant-modal"]',
+      '[class*="ant-dropdown"]',
+      '[class*="ant-select-dropdown"]',
+      // Other common portal patterns
+      'body > div[class*="modal"]',
+      'body > div[class*="dialog"]',
+      'body > div[style*="position: fixed"]',
+      'body > div[style*="position: absolute"]',
+    ];
+
+    portalSelectors.forEach((selector) => {
+      try {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach((el) => targets.add(el));
+      } catch (e) {
+        // Ignore invalid selectors
       }
-      return;
-    }
+    });
 
-    const elementWithTestId = findClosestTestId(target);
-
-    if (elementWithTestId !== highlightedElement) {
-      if (highlightedElement) {
-        (highlightedElement as HTMLElement).style.outline = "";
-        (highlightedElement as HTMLElement).style.outlineOffset = "";
+    // Also look for any direct children of body that might be portals
+    Array.from(document.body.children).forEach((child) => {
+      const style = window.getComputedStyle(child);
+      if (
+        style.position === 'fixed' ||
+        style.position === 'absolute' ||
+        parseInt(style.zIndex, 10) > 1000
+      ) {
+        targets.add(child);
       }
+    });
 
-      if (elementWithTestId) {
-        (elementWithTestId as HTMLElement).style.outline = "2px solid red";
-        (elementWithTestId as HTMLElement).style.outlineOffset = "2px";
-      }
+    eventTargetsRef.current = targets;
+  }, []);
 
-      setHighlightedElement(elementWithTestId);
-    }
-  };
-
-  // Removed handleMouseLeave since we're now tracking globally
-
-  const handleClick = (event: MouseEvent) => {
+  // Aggressive event handling - override stopPropagation during recording
+  const overrideEventPropagation = useCallback(() => {
     if (!isEventRecording) return;
 
-    const target = event.target as Element;
+    // Store original methods
+    originalStopPropagationRef.current = Event.prototype.stopPropagation;
+    originalStopImmediatePropagationRef.current =
+      Event.prototype.stopImmediatePropagation;
 
-    // Ignore clicks within framework UI panels
-    if (isWithinFrameworkUI(target)) {
-      return;
-    }
+    // Override stopPropagation to allow our listeners to still work
+    Event.prototype.stopPropagation = function (this: Event) {
+      // Mark that propagation was stopped, but don't actually stop it during our recording
+      (this as any)._snapTestPropagationStopped = true;
 
-    const elementWithTestId = findClosestTestId(target);
-
-    if (elementWithTestId) {
-      const testId = elementWithTestId.getAttribute("data-test-id");
-      const timestamp = new Date().toISOString();
-      const elementText = elementWithTestId.innerText?.trim() || "";
-      const tagName = elementWithTestId.tagName.toLowerCase();
-      const elementType = (elementWithTestId as HTMLInputElement).type || null;
-      const rect = elementWithTestId.getBoundingClientRect();
-
-      // Use Command key on Mac, Ctrl key on other platforms
-      const isAssertionClick = isMac ? event.metaKey : event.ctrlKey;
-      
-      if (isAssertionClick) {
-        event.stopPropagation();
-
-        setAssertionHighlight(elementWithTestId);
-        (elementWithTestId as HTMLElement).style.outline = "3px solid orange";
-        (elementWithTestId as HTMLElement).style.outlineOffset = "3px";
-
-        setTimeout(() => {
-          (elementWithTestId as HTMLElement).style.outline = "";
-          (elementWithTestId as HTMLElement).style.outlineOffset = "";
-          setAssertionHighlight(null);
-        }, 1000);
-
-        const eventData = {
-          id: Date.now() + Math.random(),
-          timestamp,
-          testId,
-          elementText,
-          tagName,
-          elementType,
-          type: "assertion" as const,
-          position: {
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-          },
-          clickPosition: {
-            x: event.clientX,
-            y: event.clientY,
-          },
-        };
-
-        setRecordedEvents((prev) => [...prev, eventData]);
-        
-        // Console logging
-        if (isConsoleLogging) {
-          console.group(`🔍 SnapTest Assertion Recorded`);
-          console.log(`Test ID: ${testId}`);
-          console.log(`Element: ${tagName}${elementType ? `[${elementType}]` : ''}`);
-          console.log(`Text: "${elementText}"`);
-          console.log(`Timestamp: ${timestamp}`);
-          console.log(`Position: (${event.clientX}, ${event.clientY})`);
-          console.groupEnd();
+      // Still call original for other listeners, but after a small delay
+      // This ensures our listeners fire first
+      setTimeout(() => {
+        if (originalStopPropagationRef.current) {
+          originalStopPropagationRef.current.call(this);
         }
-        
+      }, 0);
+    };
+
+    Event.prototype.stopImmediatePropagation = function (this: Event) {
+      (this as any)._snapTestImmediatePropagationStopped = true;
+
+      setTimeout(() => {
+        if (originalStopImmediatePropagationRef.current) {
+          originalStopImmediatePropagationRef.current.call(this);
+        }
+      }, 0);
+    };
+  }, [isEventRecording]);
+
+  const restoreEventPropagation = useCallback(() => {
+    if (originalStopPropagationRef.current) {
+      Event.prototype.stopPropagation = originalStopPropagationRef.current;
+      originalStopPropagationRef.current = null;
+    }
+    if (originalStopImmediatePropagationRef.current) {
+      Event.prototype.stopImmediatePropagation =
+        originalStopImmediatePropagationRef.current;
+      originalStopImmediatePropagationRef.current = null;
+    }
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (event: Event) => {
+      console.log('handleMouseMove', event);
+      const mouseEvent = event as MouseEvent;
+      const target = mouseEvent.target as Element;
+
+      // Ignore hovers within framework UI panels
+      if (isWithinFrameworkUI(target)) {
+        // Clear any existing highlight when entering framework UI
+        if (highlightedElement) {
+          (highlightedElement as HTMLElement).style.outline = '';
+          (highlightedElement as HTMLElement).style.outlineOffset = '';
+          setHighlightedElement(null);
+        }
+        hoveredElementInfoRef.current = null;
         return;
       }
 
-      const eventData = {
-        id: Date.now() + Math.random(),
-        timestamp,
-        testId,
-        elementText,
-        tagName,
-        elementType,
-        type: "click" as const,
-        position: {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        },
-        clickPosition: {
-          x: event.clientX,
-          y: event.clientY,
-        },
-      };
+      const elementWithTestId = findClosestTestId(target);
 
-      setRecordedEvents((prev) => [...prev, eventData]);
-      
-      // Console logging
-      if (isConsoleLogging) {
-        console.group(`👆 SnapTest Click Recorded`);
-        console.log(`Test ID: ${testId}`);
-        console.log(`Element: ${tagName}${elementType ? `[${elementType}]` : ''}`);
-        if (elementText) console.log(`Text: "${elementText}"`);
-        console.log(`Timestamp: ${timestamp}`);
-        console.log(`Position: (${event.clientX}, ${event.clientY})`);
-        console.groupEnd();
+      if (elementWithTestId !== highlightedElement) {
+        if (highlightedElement) {
+          (highlightedElement as HTMLElement).style.outline = '';
+          (highlightedElement as HTMLElement).style.outlineOffset = '';
+        }
+
+        if (elementWithTestId) {
+          (elementWithTestId as HTMLElement).style.outline = '2px solid red';
+          (elementWithTestId as HTMLElement).style.outlineOffset = '2px';
+
+          // Cache element info for potential click later (especially important for disappearing elements)
+          const testId = elementWithTestId.getAttribute('data-test-id') || '';
+          const elementText =
+            (elementWithTestId as HTMLElement).innerText?.trim() || '';
+          const tagName = elementWithTestId.tagName.toLowerCase();
+          const elementType =
+            (elementWithTestId as HTMLInputElement).type || null;
+          const rect = elementWithTestId.getBoundingClientRect();
+
+          hoveredElementInfoRef.current = {
+            element: elementWithTestId,
+            testId,
+            elementText,
+            tagName,
+            elementType,
+            rect,
+            timestamp: Date.now(),
+          };
+        } else {
+          hoveredElementInfoRef.current = null;
+        }
+
+        setHighlightedElement(elementWithTestId);
       }
-    }
-  };
+    },
+    [highlightedElement]
+  );
+
+  // Multi-type event handler for maximum capture reliability
+  const handleInteraction = useCallback(
+    (event: Event) => {
+      console.log('handleInteraction', event);
+      if (!isEventRecording) return;
+
+      const mouseEvent = event as MouseEvent;
+      const target = mouseEvent.target as Element;
+
+      // Ignore clicks within framework UI panels
+      if (isWithinFrameworkUI(target)) {
+        return;
+      }
+
+      // For mousedown, we want to capture and cache the element info
+      // For click, we want to actually record the event
+      let elementToRecord: Element | null = null;
+      const cachedInfo = hoveredElementInfoRef.current;
+
+      if (event.type === 'mousedown') {
+        // On mousedown, try to find and cache the element (before it potentially disappears)
+        elementToRecord = findClosestTestId(target);
+        if (elementToRecord) {
+          const testId = elementToRecord.getAttribute('data-test-id') || '';
+          const elementText =
+            (elementToRecord as HTMLElement).innerText?.trim() || '';
+          const tagName = elementToRecord.tagName.toLowerCase();
+          const elementType =
+            (elementToRecord as HTMLInputElement).type || null;
+          const rect = elementToRecord.getBoundingClientRect();
+
+          hoveredElementInfoRef.current = {
+            element: elementToRecord,
+            testId,
+            elementText,
+            tagName,
+            elementType,
+            rect,
+            timestamp: Date.now(),
+          };
+        }
+        return; // Don't record on mousedown, just cache
+      }
+
+      // For click events, try current element first, then fall back to cached info
+      if (event.type === 'click') {
+        elementToRecord = findClosestTestId(target);
+
+        // If we can't find the element (it disappeared), use cached info if it's recent
+        if (
+          !elementToRecord &&
+          cachedInfo &&
+          Date.now() - cachedInfo.timestamp < 2000
+        ) {
+          // Use cached element info from hover/mousedown
+          console.log(
+            'Using cached element info for disappeared element:',
+            cachedInfo.testId
+          );
+
+          const timestamp = new Date().toISOString();
+
+          if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
+            mouseEvent.stopPropagation();
+            mouseEvent.preventDefault();
+
+            const eventData: RecordedEvent = {
+              id: Date.now() + Math.random(),
+              timestamp,
+              testId: cachedInfo.testId,
+              elementText: cachedInfo.elementText,
+              tagName: cachedInfo.tagName,
+              elementType: cachedInfo.elementType,
+              type: 'assertion' as const,
+              position: {
+                x: cachedInfo.rect.left + cachedInfo.rect.width / 2,
+                y: cachedInfo.rect.top + cachedInfo.rect.height / 2,
+              },
+              clickPosition: {
+                x: mouseEvent.clientX,
+                y: mouseEvent.clientY,
+              },
+            };
+
+            setRecordedEvents((prev) => [...prev, eventData]);
+            return;
+          }
+
+          const eventData: RecordedEvent = {
+            id: Date.now() + Math.random(),
+            timestamp,
+            testId: cachedInfo.testId,
+            elementText: cachedInfo.elementText,
+            tagName: cachedInfo.tagName,
+            elementType: cachedInfo.elementType,
+            type: 'click' as const,
+            position: {
+              x: cachedInfo.rect.left + cachedInfo.rect.width / 2,
+              y: cachedInfo.rect.top + cachedInfo.rect.height / 2,
+            },
+            clickPosition: {
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+            },
+          };
+
+          setRecordedEvents((prev) => [...prev, eventData]);
+          return;
+        }
+
+        // Normal path: element still exists
+        if (elementToRecord) {
+          const testId = elementToRecord.getAttribute('data-test-id');
+          const timestamp = new Date().toISOString();
+          const elementText =
+            (elementToRecord as HTMLElement).innerText?.trim() || '';
+          const tagName = elementToRecord.tagName.toLowerCase();
+          const elementType =
+            (elementToRecord as HTMLInputElement).type || null;
+          const rect = elementToRecord.getBoundingClientRect();
+
+          if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
+            mouseEvent.stopPropagation();
+            mouseEvent.preventDefault();
+
+            setAssertionHighlight(elementToRecord);
+            (elementToRecord as HTMLElement).style.outline = '3px solid orange';
+            (elementToRecord as HTMLElement).style.outlineOffset = '3px';
+
+            setTimeout(() => {
+              (elementToRecord as HTMLElement).style.outline = '';
+              (elementToRecord as HTMLElement).style.outlineOffset = '';
+              setAssertionHighlight(null);
+            }, 1000);
+
+            const eventData: RecordedEvent = {
+              id: Date.now() + Math.random(),
+              timestamp,
+              testId: testId || '',
+              elementText,
+              tagName,
+              elementType,
+              type: 'assertion' as const,
+              position: {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+              },
+              clickPosition: {
+                x: mouseEvent.clientX,
+                y: mouseEvent.clientY,
+              },
+            };
+
+            setRecordedEvents((prev) => [...prev, eventData]);
+            return;
+          }
+
+          const eventData: RecordedEvent = {
+            id: Date.now() + Math.random(),
+            timestamp,
+            testId: testId || '',
+            elementText,
+            tagName,
+            elementType,
+            type: 'click' as const,
+            position: {
+              x: rect.left + rect.width / 2,
+              y: rect.top + rect.height / 2,
+            },
+            clickPosition: {
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+            },
+          };
+
+          setRecordedEvents((prev) => [...prev, eventData]);
+        }
+      }
+    },
+    [isEventRecording]
+  );
 
   const startEventRecording = () => setIsEventRecording(true);
   const stopEventRecording = () => setIsEventRecording(false);
@@ -711,7 +954,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   const stopNetworkRecording = () => setIsNetworkRecording(false);
   const clearNetworkEvents = () => setNetworkEvents([]);
 
-  const toggleConsoleLogging = () => setIsConsoleLogging(prev => !prev);
+  const toggleConsoleLogging = () => setIsConsoleLogging((prev) => !prev);
 
   // Network interception effect
   useEffect(() => {
@@ -723,12 +966,15 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       const requestId = generateUUID();
       const [resource, config] = args;
 
-      const url = typeof resource === "string" ? resource : resource.url;
-      const method = config?.method || "GET";
+      const url =
+        typeof resource === 'string'
+          ? resource
+          : (resource as Request).url || '';
+      const method = config?.method || 'GET';
 
-      const requestEvent: NetworkEvent = {
+      const requestEvent: NetworkHistoryItem = {
         id: requestId,
-        type: "network-request",
+        type: 'network-request',
         method,
         url,
         timestamp: Date.now(),
@@ -738,15 +984,18 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       };
 
       setNetworkEvents((prev) => [...prev, requestEvent]);
-      
+
       // Console logging for request
       if (isConsoleLogging) {
         console.group(`🌐 SnapTest Network Request (fetch)`);
         console.log(`Method: ${method}`);
         console.log(`URL: ${url}`);
-        if (requestEvent.request?.body) console.log(`Body: ${requestEvent.request.body}`);
+        if (requestEvent.request?.body)
+          console.log(`Body: ${requestEvent.request.body}`);
         console.log(`Request ID: ${requestId}`);
-        console.log(`Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`);
+        console.log(
+          `Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`
+        );
         console.groupEnd();
       }
 
@@ -763,9 +1012,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             responseData = responseText;
           }
 
-          const responseEvent: NetworkEvent = {
+          const responseEvent: NetworkHistoryItem = {
             id: requestId,
-            type: "network-response",
+            type: 'network-response',
             status: response.status,
             url,
             timestamp: Date.now(),
@@ -775,7 +1024,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           };
 
           setNetworkEvents((prev) => [...prev, responseEvent]);
-          
+
           // Console logging for response
           if (isConsoleLogging) {
             console.group(`📡 SnapTest Network Response (fetch)`);
@@ -783,33 +1032,39 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             console.log(`URL: ${url}`);
             console.log(`Response Data:`, responseData);
             console.log(`Request ID: ${requestId}`);
-            console.log(`Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`);
+            console.log(
+              `Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`
+            );
             console.groupEnd();
           }
-        } catch (error) {}
+        } catch (error: unknown) {
+          // ignore
+        }
 
         return response;
       } catch (error) {
-        const errorEvent: NetworkEvent = {
+        const errorEvent: NetworkHistoryItem = {
           id: requestId,
-          type: "network-error",
+          type: 'network-error',
           url,
           timestamp: Date.now(),
           error: (error as Error).message,
         };
 
         setNetworkEvents((prev) => [...prev, errorEvent]);
-        
+
         // Console logging for error
         if (isConsoleLogging) {
           console.group(`❌ SnapTest Network Error (fetch)`);
           console.error(`Error: ${(error as Error).message}`);
           console.log(`URL: ${url}`);
           console.log(`Request ID: ${requestId}`);
-          console.log(`Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`);
+          console.log(
+            `Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`
+          );
           console.groupEnd();
         }
-        
+
         throw error;
       }
     };
@@ -817,18 +1072,35 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     // Intercept XMLHttpRequest
     const originalXHROpen = XMLHttpRequest.prototype.open;
     const originalXHRSend = XMLHttpRequest.prototype.send;
-    const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    const originalXHRSetRequestHeader =
+      XMLHttpRequest.prototype.setRequestHeader;
 
-    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) {
+    XMLHttpRequest.prototype.open = function (
+      method: string,
+      url: string | URL,
+      async?: boolean,
+      username?: string | null,
+      password?: string | null
+    ) {
       this._snapTestRequestId = generateUUID();
       this._snapTestMethod = method;
       this._snapTestUrl = url.toString();
       this._snapTestHeaders = {};
-      
-      return originalXHROpen.call(this, method, url, async, username, password);
+
+      return originalXHROpen.call(
+        this,
+        method,
+        url,
+        async ?? true,
+        username,
+        password
+      );
     };
 
-    XMLHttpRequest.prototype.setRequestHeader = function(name: string, value: string) {
+    XMLHttpRequest.prototype.setRequestHeader = function (
+      name: string,
+      value: string
+    ) {
       if (!this._snapTestHeaders) {
         this._snapTestHeaders = {};
       }
@@ -836,15 +1108,17 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       return originalXHRSetRequestHeader.call(this, name, value);
     };
 
-    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+    XMLHttpRequest.prototype.send = function (
+      body?: Document | XMLHttpRequestBodyInit | null
+    ) {
       const requestId = this._snapTestRequestId;
       const method = this._snapTestMethod;
       const url = this._snapTestUrl;
 
       if (requestId && method && url) {
-        const requestEvent: NetworkEvent = {
+        const requestEvent: NetworkHistoryItem = {
           id: requestId,
-          type: "network-request",
+          type: 'network-request',
           method,
           url,
           timestamp: Date.now(),
@@ -854,15 +1128,18 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         };
 
         setNetworkEvents((prev) => [...prev, requestEvent]);
-        
+
         // Console logging for XHR request
         if (isConsoleLogging) {
           console.group(`🌐 SnapTest Network Request (XHR)`);
           console.log(`Method: ${method}`);
           console.log(`URL: ${url}`);
-          if (requestEvent.request?.body) console.log(`Body: ${requestEvent.request.body}`);
+          if (requestEvent.request?.body)
+            console.log(`Body: ${requestEvent.request.body}`);
           console.log(`Request ID: ${requestId}`);
-          console.log(`Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`);
+          console.log(
+            `Timestamp: ${new Date(requestEvent.timestamp).toISOString()}`
+          );
           console.groupEnd();
         }
 
@@ -874,9 +1151,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             responseData = this.responseText;
           }
 
-          const responseEvent: NetworkEvent = {
+          const responseEvent: NetworkHistoryItem = {
             id: requestId,
-            type: "network-response",
+            type: 'network-response',
             status: this.status,
             url,
             timestamp: Date.now(),
@@ -886,7 +1163,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           };
 
           setNetworkEvents((prev) => [...prev, responseEvent]);
-          
+
           // Console logging for XHR response
           if (isConsoleLogging) {
             console.group(`📡 SnapTest Network Response (XHR)`);
@@ -894,29 +1171,35 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             console.log(`URL: ${url}`);
             console.log(`Response Data:`, responseData);
             console.log(`Request ID: ${requestId}`);
-            console.log(`Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`);
+            console.log(
+              `Timestamp: ${new Date(responseEvent.timestamp).toISOString()}`
+            );
             console.groupEnd();
           }
         });
 
         this.addEventListener('error', () => {
-          const errorEvent: NetworkEvent = {
+          const errorEvent: NetworkHistoryItem = {
             id: requestId,
-            type: "network-error",
+            type: 'network-error',
             url,
             timestamp: Date.now(),
             error: this.statusText || 'XMLHttpRequest error',
           };
 
           setNetworkEvents((prev) => [...prev, errorEvent]);
-          
+
           // Console logging for XHR error
           if (isConsoleLogging) {
             console.group(`❌ SnapTest Network Error (XHR)`);
-            console.error(`Error: ${this.statusText || 'XMLHttpRequest error'}`);
+            console.error(
+              `Error: ${this.statusText || 'XMLHttpRequest error'}`
+            );
             console.log(`URL: ${url}`);
             console.log(`Request ID: ${requestId}`);
-            console.log(`Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`);
+            console.log(
+              `Timestamp: ${new Date(errorEvent.timestamp).toISOString()}`
+            );
             console.groupEnd();
           }
         });
@@ -931,23 +1214,119 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       XMLHttpRequest.prototype.send = originalXHRSend;
       XMLHttpRequest.prototype.setRequestHeader = originalXHRSetRequestHeader;
     };
-  }, [isNetworkRecording]);
+  }, [isNetworkRecording, isConsoleLogging, generateUUID]);
 
-  // Mouse event listeners effect - now global across entire document
+  // Enhanced multi-level event capture with propagation override
   useEffect(() => {
-    // Add event listeners to document for global coverage
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("click", handleClick, true);
+    if (!isEventRecording) return;
+
+    // Override event propagation methods
+    overrideEventPropagation();
+
+    // Initial detection of event targets
+    detectEventTargets();
+
+    // Set up MutationObserver to detect new DOM elements (like modals/portals)
+    const mutationObserver = new MutationObserver((mutations) => {
+      let shouldRedetect = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              // Check if this might be a modal/portal container
+              const style = window.getComputedStyle(element);
+              if (
+                style.position === 'fixed' ||
+                style.position === 'absolute' ||
+                parseInt(style.zIndex, 10) > 1000 ||
+                element.getAttribute('role') === 'dialog' ||
+                element.getAttribute('aria-modal') === 'true' ||
+                element.className.includes('modal') ||
+                element.className.includes('dialog') ||
+                element.className.includes('portal') ||
+                element.className.includes('overlay')
+              ) {
+                shouldRedetect = true;
+              }
+            }
+          });
+        }
+      });
+
+      if (shouldRedetect) {
+        setTimeout(detectEventTargets, 100); // Small delay to let DOM settle
+      }
+    });
+
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    mutationObserverRef.current = mutationObserver;
+
+    // Add multiple event types for maximum coverage
+    const eventTypes = ['click', 'mousedown', 'pointerdown'];
+
+    const addEventListeners = () => {
+      eventTargetsRef.current.forEach((target) => {
+        // Mousemove for highlighting
+        target.addEventListener('mousemove', handleMouseMove, {
+          passive: true,
+          capture: true,
+        });
+
+        // Multiple interaction events for click detection
+        eventTypes.forEach((eventType) => {
+          target.addEventListener(eventType, handleInteraction, {
+            capture: true,
+            passive: false, // Allow preventDefault for assertions
+          });
+        });
+      });
+
+      // Also add to window for absolute coverage
+      window.addEventListener('click', handleInteraction, {
+        capture: true,
+        passive: false,
+      });
+    };
+
+    const removeEventListeners = () => {
+      eventTargetsRef.current.forEach((target) => {
+        target.removeEventListener('mousemove', handleMouseMove, true);
+        eventTypes.forEach((eventType) => {
+          target.removeEventListener(eventType, handleInteraction, true);
+        });
+      });
+
+      window.removeEventListener('click', handleInteraction, true);
+    };
+
+    addEventListeners();
 
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("click", handleClick, true);
+      removeEventListeners();
+      restoreEventPropagation();
+      if (mutationObserverRef.current) {
+        mutationObserverRef.current.disconnect();
+      }
       if (highlightedElement) {
-        highlightedElement.style.outline = "";
-        highlightedElement.style.outlineOffset = "";
+        (highlightedElement as HTMLElement).style.outline = '';
+        (highlightedElement as HTMLElement).style.outlineOffset = '';
       }
     };
-  }, [highlightedElement, isEventRecording]);
+  }, [
+    isEventRecording,
+    handleMouseMove,
+    handleInteraction,
+    highlightedElement,
+    detectEventTargets,
+    overrideEventPropagation,
+    restoreEventPropagation,
+  ]);
 
   const contextValue = {
     networkEvents,
@@ -966,91 +1345,90 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
   return (
     <SnapTestContext.Provider value={contextValue}>
-      <div ref={containerRef} style={{ minHeight: "100vh" }}>
+      <div ref={containerRef} style={{ minHeight: '100vh' }}>
         {children}
 
         {/* Event Recording Panel */}
         <div
           className="snaptest-ui"
           style={{
-            position: "fixed",
-            top: "10px",
-            left: "10px",
-            background: "rgba(0, 0, 0, 0.9)",
-            color: "white",
-            padding: "12px",
-            borderRadius: "8px",
-            fontSize: "12px",
-            fontFamily: "monospace",
+            position: 'fixed',
+            top: '10px',
+            left: '10px',
+            background: 'rgba(0, 0, 0, 0.9)',
+            color: 'white',
+            padding: '12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
             zIndex: 2147483647,
-            minWidth: "200px",
-            pointerEvents: "auto",
+            minWidth: '200px',
+            pointerEvents: 'auto',
           }}
         >
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
             Event Recording (Global)
           </div>
-          <div style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}>
-            Events: {recordedEvents.filter((e) => e.type === "click").length}
-            {" "}
-            | Assertions:{" "}
-            {recordedEvents.filter((e) => e.type === "assertion").length}
+          <div style={{ marginBottom: '8px', fontSize: '10px', opacity: 0.8 }}>
+            Events: {recordedEvents.filter((e) => e.type === 'click').length} |
+            Assertions:{' '}
+            {recordedEvents.filter((e) => e.type === 'assertion').length}
           </div>
-          <div style={{ marginBottom: "8px" }}>
+          <div style={{ marginBottom: '8px' }}>
             <button
-              onClick={isEventRecording
-                ? stopEventRecording
-                : startEventRecording}
+              onClick={
+                isEventRecording ? stopEventRecording : startEventRecording
+              }
               style={{
-                background: isEventRecording ? "#ff4444" : "#4CAF50",
-                color: "white",
-                border: "none",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                cursor: "pointer",
-                marginRight: "8px",
-                fontSize: "11px",
+                background: isEventRecording ? '#ff4444' : '#4CAF50',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginRight: '8px',
+                fontSize: '11px',
               }}
             >
-              {isEventRecording ? "Stop" : "Start"} Recording
+              {isEventRecording ? 'Stop' : 'Start'} Recording
             </button>
             <button
               onClick={clearEvents}
               style={{
-                background: "#666",
-                color: "white",
-                border: "none",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "11px",
+                background: '#666',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '11px',
               }}
             >
               Clear ({recordedEvents.length})
             </button>
           </div>
-          <div style={{ marginBottom: "8px" }}>
+          <div style={{ marginBottom: '8px' }}>
             <button
               onClick={toggleConsoleLogging}
               style={{
-                background: isConsoleLogging ? "#4CAF50" : "#666",
-                color: "white",
-                border: "none",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "11px",
-                width: "100%",
+                background: isConsoleLogging ? '#4CAF50' : '#666',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '11px',
+                width: '100%',
               }}
             >
-              Console Logging: {isConsoleLogging ? "ON" : "OFF"}
+              Console Logging: {isConsoleLogging ? 'ON' : 'OFF'}
             </button>
           </div>
           {isEventRecording && (
-            <div style={{ color: "#ff4444" }}>● Recording clicks...</div>
+            <div style={{ color: '#ff4444' }}>● Recording clicks...</div>
           )}
           {isEventRecording && (
-            <div style={{ color: "#888", fontSize: "10px", marginTop: "4px" }}>
+            <div style={{ color: '#888', fontSize: '10px', marginTop: '4px' }}>
               {isMac ? 'Cmd+Click' : 'Ctrl+Click'} for assertions
             </div>
           )}
@@ -1060,58 +1438,60 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         <div
           className="snaptest-ui"
           style={{
-            position: "fixed",
-            top: "10px",
-            left: "250px",
-            background: "rgba(0, 0, 0, 0.9)",
-            color: "white",
-            padding: "12px",
-            borderRadius: "8px",
-            fontSize: "12px",
-            fontFamily: "monospace",
+            position: 'fixed',
+            top: '10px',
+            left: '250px',
+            background: 'rgba(0, 0, 0, 0.9)',
+            color: 'white',
+            padding: '12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
             zIndex: 2147483647,
-            minWidth: "200px",
-            pointerEvents: "auto",
+            minWidth: '200px',
+            pointerEvents: 'auto',
           }}
         >
-          <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
             Network Recording
           </div>
-          <div style={{ marginBottom: "8px" }}>
+          <div style={{ marginBottom: '8px' }}>
             <button
-              onClick={isNetworkRecording
-                ? stopNetworkRecording
-                : startNetworkRecording}
+              onClick={
+                isNetworkRecording
+                  ? stopNetworkRecording
+                  : startNetworkRecording
+              }
               style={{
-                background: isNetworkRecording ? "#ff4444" : "#4CAF50",
-                color: "white",
-                border: "none",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                cursor: "pointer",
-                marginRight: "8px",
-                fontSize: "11px",
+                background: isNetworkRecording ? '#ff4444' : '#4CAF50',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginRight: '8px',
+                fontSize: '11px',
               }}
             >
-              {isNetworkRecording ? "Stop" : "Start"} Recording
+              {isNetworkRecording ? 'Stop' : 'Start'} Recording
             </button>
             <button
               onClick={clearNetworkEvents}
               style={{
-                background: "#666",
-                color: "white",
-                border: "none",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "11px",
+                background: '#666',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '11px',
               }}
             >
               Clear ({networkEvents.length})
             </button>
           </div>
           {isNetworkRecording && (
-            <div style={{ color: "#2196F3" }}>● Recording network...</div>
+            <div style={{ color: '#2196F3' }}>● Recording network...</div>
           )}
         </div>
 
@@ -1119,42 +1499,42 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           <div
             className="snaptest-ui"
             style={{
-              position: "fixed",
-              bottom: "10px",
-              right: highlightedElement ? "320px" : "10px",
-              left: "50%",
-              background: "rgba(0, 0, 0, 0.9)",
-              color: "white",
-              padding: "12px",
-              borderRadius: "8px",
-              fontSize: "11px",
-              fontFamily: "monospace",
+              position: 'fixed',
+              bottom: '10px',
+              right: highlightedElement ? '320px' : '10px',
+              left: '50%',
+              background: 'rgba(0, 0, 0, 0.9)',
+              color: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontFamily: 'monospace',
               zIndex: 2147483647,
-              maxHeight: "200px",
-              overflowY: "auto",
-              pointerEvents: "auto",
+              maxHeight: '200px',
+              overflowY: 'auto',
+              pointerEvents: 'auto',
             }}
           >
-            <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+            <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
               Recorded Events ({recordedEvents.length})
             </div>
             {recordedEvents.slice(-10).map((event) => (
               <div
                 key={event.id}
                 style={{
-                  marginBottom: "8px",
-                  padding: "6px",
-                  background: "rgba(255, 255, 255, 0.1)",
-                  borderRadius: "4px",
-                  fontSize: "10px",
+                  marginBottom: '8px',
+                  padding: '6px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  borderRadius: '4px',
+                  fontSize: '10px',
                 }}
               >
                 <div
                   style={{
-                    color: event.type === "assertion" ? "#FF9800" : "#4CAF50",
+                    color: event.type === 'assertion' ? '#FF9800' : '#4CAF50',
                   }}
                 >
-                  {event.type === "assertion" ? "assertion" : "click"}:{" "}
+                  {event.type === 'assertion' ? 'assertion' : 'click'}:{' '}
                   {event.testId}
                 </div>
                 <div style={{ opacity: 0.8 }}>
@@ -1162,19 +1542,21 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
                 </div>
                 <div style={{ opacity: 0.8 }}>
                   element: {event.tagName}
-                  {event.elementType ? `[${event.elementType}]` : ""}
+                  {event.elementType ? `[${event.elementType}]` : ''}
                 </div>
                 {event.elementText && (
                   <div style={{ opacity: 0.8 }}>
-                    text: "{event.elementText.length > 30
-                      ? event.elementText.substring(0, 30) + "..."
-                      : event.elementText}"
+                    text: "
+                    {event.elementText.length > 30
+                      ? `${event.elementText.substring(0, 30)}...`
+                      : event.elementText}
+                    "
                   </div>
                 )}
               </div>
             ))}
             {recordedEvents.length > 10 && (
-              <div style={{ opacity: 0.6, textAlign: "center" }}>
+              <div style={{ opacity: 0.6, textAlign: 'center' }}>
                 ... showing last 10 events
               </div>
             )}
@@ -1185,43 +1567,44 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           <div
             className="snaptest-ui"
             style={{
-              position: "fixed",
-              bottom: "10px",
-              right: "10px",
-              width: "300px",
-              background: "rgba(0, 0, 0, 0.9)",
-              color: "white",
-              padding: "12px",
-              borderRadius: "8px",
-              fontSize: "12px",
-              fontFamily: "monospace",
+              position: 'fixed',
+              bottom: '10px',
+              right: '10px',
+              width: '300px',
+              background: 'rgba(0, 0, 0, 0.9)',
+              color: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontFamily: 'monospace',
               zIndex: 2147483647,
-              pointerEvents: "none",
-              maxHeight: "200px",
-              wordBreak: "break-word",
-              overflowY: "auto",
+              pointerEvents: 'none',
+              maxHeight: '200px',
+              wordBreak: 'break-word',
+              overflowY: 'auto',
             }}
           >
             <div
               style={{
-                marginBottom: "4px",
-                fontWeight: "bold",
-                color: "#ff6b6b",
+                marginBottom: '4px',
+                fontWeight: 'bold',
+                color: '#ff6b6b',
               }}
             >
               Element Info
             </div>
-            <div style={{ color: "#4CAF50" }}>
-              data-test-id: {highlightedElement.getAttribute("data-test-id")}
+            <div style={{ color: '#4CAF50' }}>
+              data-test-id: {highlightedElement.getAttribute('data-test-id')}
             </div>
             {(() => {
-              const text = highlightedElement.innerText?.trim();
+              const text = (
+                highlightedElement as HTMLElement
+              ).innerText?.trim();
               if (text && text.length > 0) {
-                const truncatedText = text.length > 100
-                  ? text.substring(0, 100) + "..."
-                  : text;
+                const truncatedText =
+                  text.length > 100 ? `${text.substring(0, 100)}...` : text;
                 return (
-                  <div style={{ marginTop: "4px", opacity: 0.8 }}>
+                  <div style={{ marginTop: '4px', opacity: 0.8 }}>
                     text: "{truncatedText}"
                   </div>
                 );
@@ -1235,39 +1618,37 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           <div
             className="snaptest-ui"
             style={{
-              position: "fixed",
-              bottom: "10px",
-              left: "10px",
-              right: recordedEvents.length > 0 ? "50%" : "10px",
-              maxHeight: "200px",
-              background: "rgba(0, 0, 0, 0.9)",
-              color: "white",
-              padding: "10px",
-              borderRadius: "4px",
-              fontSize: "11px",
-              fontFamily: "monospace",
-              overflow: "auto",
+              position: 'fixed',
+              bottom: '10px',
+              left: '10px',
+              right: recordedEvents.length > 0 ? '50%' : '10px',
+              maxHeight: '200px',
+              background: 'rgba(0, 0, 0, 0.9)',
+              color: 'white',
+              padding: '10px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+              overflow: 'auto',
               zIndex: 2147483647,
-              pointerEvents: "auto",
+              pointerEvents: 'auto',
             }}
           >
             <div>
               <strong>Network Events Log:</strong>
             </div>
             {networkEvents.map((event, index) => (
-              <div key={index} style={{ marginBottom: "5px" }}>
-                {event.type === "network-request"
-                  ? (
-                    <span style={{ color: "#87CEEB" }}>
-                      → {event.method} {event.url}
-                    </span>
-                  )
-                  : (
-                    <span style={{ color: "#90EE90" }}>
-                      ← {event.status} (Response)
-                    </span>
-                  )}
-                <span style={{ color: "#ddd", marginLeft: "10px" }}>
+              <div key={index} style={{ marginBottom: '5px' }}>
+                {event.type === 'network-request' ? (
+                  <span style={{ color: '#87CEEB' }}>
+                    → {event.method} {event.url}
+                  </span>
+                ) : (
+                  <span style={{ color: '#90EE90' }}>
+                    ← {event.status} (Response)
+                  </span>
+                )}
+                <span style={{ color: '#ddd', marginLeft: '10px' }}>
                   {new Date(event.timestamp).toLocaleTimeString()}
                 </span>
               </div>
@@ -1281,9 +1662,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   );
 }
 
-interface NetworkEvent {
+interface NetworkHistoryItem {
   id: string;
-  type: "network-request" | "network-response" | "network-error";
+  type: 'network-request' | 'network-response' | 'network-error';
   method?: string;
   url: string;
   timestamp: number;
@@ -1293,6 +1674,7 @@ interface NetworkEvent {
   };
   response?: {
     data: unknown;
+    headers?: Record<string, unknown>;
   };
   error?: string;
 }
@@ -1304,15 +1686,7 @@ interface EventHistoryItem {
   elementText: string;
   tagName: string;
   elementType?: string | null;
-  type: "click" | "assertion";
-}
-
-interface NetworkHistoryItem {
-  id: string;
-  type: "network-request" | "network-response" | "network-error";
-  method?: string;
-  url: string;
-  timestamp: number;
+  type: 'click' | 'assertion';
 }
 
 interface GeneratedTestSuite {
@@ -1327,22 +1701,22 @@ interface GeneratedTestSuite {
 }
 
 function SnapTestGenerator() {
-  const { recordedEvents: eventHistory, networkEvents: networkHistory, isConsoleLogging } =
+  const { recordedEvents: eventHistory, networkEvents: networkHistory } =
     useSnapTest();
   const [generatedTest, setGeneratedTest] = useState<GeneratedTestSuite | null>(
-    null,
+    null
   );
   const [showOutput, setShowOutput] = useState(false);
   const [testOptions, setTestOptions] = useState({
-    testName: "should handle user interactions correctly",
-    componentName: "MyComponent",
-    describe: "MyComponent Integration Tests",
+    testName: 'should handle user interactions correctly',
+    componentName: 'MyComponent',
+    describe: 'MyComponent Integration Tests',
   });
 
   const handleGenerateTest = () => {
     if (eventHistory.length === 0 && networkHistory.length === 0) {
-      alert(
-        "No events or network activity recorded. Start recording and interact with the app first.",
+      console.warn(
+        'SnapTest: No events or network activity recorded. Start recording and interact with the app first.'
       );
       return;
     }
@@ -1353,17 +1727,35 @@ function SnapTestGenerator() {
   };
 
   const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      alert(`${type} copied to clipboard!`);
-    }).catch(() => {
-      alert("Failed to copy to clipboard");
-    });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          console.log(`SnapTest: ${type} copied to clipboard!`);
+        })
+        .catch(() => {
+          console.error('SnapTest: Failed to copy to clipboard');
+        });
+    } else {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        console.log(`SnapTest: ${type} copied to clipboard!`);
+      } catch (err) {
+        console.error('SnapTest: Failed to copy to clipboard');
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const downloadFile = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: "text/plain" });
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -1376,259 +1768,255 @@ function SnapTestGenerator() {
     <div
       className="snaptest-ui"
       style={{
-        position: "fixed",
-        top: "10px",
-        right: "10px",
-        background: "rgba(0, 0, 0, 0.9)",
-        color: "white",
-        padding: "12px",
-        borderRadius: "8px",
-        fontSize: "12px",
-        fontFamily: "monospace",
+        position: 'fixed',
+        top: '10px',
+        right: '10px',
+        background: 'rgba(0, 0, 0, 0.9)',
+        color: 'white',
+        padding: '12px',
+        borderRadius: '8px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
         zIndex: 2147483647,
-        pointerEvents: "auto",
-        minWidth: "200px",
-        maxWidth: showOutput ? "600px" : "200px",
-        maxHeight: showOutput ? "80vh" : "auto",
-        overflowY: "auto",
+        pointerEvents: 'auto',
+        minWidth: '200px',
+        maxWidth: showOutput ? '600px' : '200px',
+        maxHeight: showOutput ? '80vh' : 'auto',
+        overflowY: 'auto',
       }}
     >
-      <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+      <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
         SnapTest Generator
       </div>
 
-      {!showOutput
-        ? (
-          <>
-            <div
-              style={{ marginBottom: "8px", fontSize: "10px", opacity: 0.8 }}
-            >
-              Events: {eventHistory.filter((e) => e.type === "click").length}
-              {" "}
-              | Assertions:{" "}
-              {eventHistory.filter((e) => e.type === "assertion").length}{" "}
-              | Network:{" "}
-              {networkHistory.filter((e) => e.type === "network-request")
-                .length}
-            </div>
+      {!showOutput ? (
+        <>
+          <div style={{ marginBottom: '8px', fontSize: '10px', opacity: 0.8 }}>
+            Events: {eventHistory.filter((e) => e.type === 'click').length} |
+            Assertions:{' '}
+            {eventHistory.filter((e) => e.type === 'assertion').length} |
+            Network:{' '}
+            {networkHistory.filter((e) => e.type === 'network-request').length}
+          </div>
 
-            <div style={{ marginBottom: "8px" }}>
-              <input
-                type="text"
-                placeholder="Test name"
-                value={testOptions.testName}
-                onChange={(e) =>
-                  setTestOptions((prev) => ({
-                    ...prev,
-                    testName: e.target.value,
-                  }))}
-                style={{
-                  width: "100%",
-                  padding: "4px",
-                  marginBottom: "4px",
-                  fontSize: "11px",
-                  border: "none",
-                  borderRadius: "3px",
-                }}
-                data-test-id="test-name-input"
-              />
-              <input
-                type="text"
-                placeholder="Component name"
-                value={testOptions.componentName}
-                onChange={(e) =>
-                  setTestOptions((prev) => ({
-                    ...prev,
-                    componentName: e.target.value,
-                  }))}
-                style={{
-                  width: "100%",
-                  padding: "4px",
-                  fontSize: "11px",
-                  border: "none",
-                  borderRadius: "3px",
-                }}
-                data-test-id="component-name-input"
-              />
-            </div>
+          <div style={{ marginBottom: '8px' }}>
+            <input
+              type="text"
+              placeholder="Test name"
+              value={testOptions.testName}
+              onChange={(e) =>
+                setTestOptions((prev) => ({
+                  ...prev,
+                  testName: e.target.value,
+                }))
+              }
+              style={{
+                width: '100%',
+                padding: '4px',
+                marginBottom: '4px',
+                fontSize: '11px',
+                border: 'none',
+                borderRadius: '3px',
+              }}
+              data-test-id="test-name-input"
+            />
+            <input
+              type="text"
+              placeholder="Component name"
+              value={testOptions.componentName}
+              onChange={(e) =>
+                setTestOptions((prev) => ({
+                  ...prev,
+                  componentName: e.target.value,
+                }))
+              }
+              style={{
+                width: '100%',
+                padding: '4px',
+                fontSize: '11px',
+                border: 'none',
+                borderRadius: '3px',
+              }}
+              data-test-id="component-name-input"
+            />
+          </div>
 
+          <button
+            onClick={handleGenerateTest}
+            disabled={eventHistory.length === 0 && networkHistory.length === 0}
+            style={{
+              background:
+                eventHistory.length === 0 && networkHistory.length === 0
+                  ? '#666'
+                  : '#FF9800',
+              color: 'white',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              cursor:
+                eventHistory.length === 0 && networkHistory.length === 0
+                  ? 'not-allowed'
+                  : 'pointer',
+              fontSize: '11px',
+              width: '100%',
+            }}
+            data-test-id="generate-test-button"
+          >
+            Generate Test
+          </button>
+        </>
+      ) : (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px',
+            }}
+          >
+            <span style={{ fontWeight: 'bold' }}>Generated Test</span>
             <button
-              onClick={handleGenerateTest}
-              disabled={eventHistory.length === 0 &&
-                networkHistory.length === 0}
+              onClick={() => setShowOutput(false)}
               style={{
-                background:
-                  (eventHistory.length === 0 && networkHistory.length === 0)
-                    ? "#666"
-                    : "#FF9800",
-                color: "white",
-                border: "none",
-                padding: "6px 12px",
-                borderRadius: "4px",
-                cursor:
-                  (eventHistory.length === 0 && networkHistory.length === 0)
-                    ? "not-allowed"
-                    : "pointer",
-                fontSize: "11px",
-                width: "100%",
+                background: '#666',
+                color: 'white',
+                border: 'none',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '10px',
               }}
-              data-test-id="generate-test-button"
+              data-test-id="close-test-output-button"
             >
-              Generate Test
+              ✕
             </button>
-          </>
-        )
-        : (
-          <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "8px",
-              }}
-            >
-              <span style={{ fontWeight: "bold" }}>Generated Test</span>
-              <button
-                onClick={() => setShowOutput(false)}
+          </div>
+
+          {generatedTest && (
+            <>
+              <div
                 style={{
-                  background: "#666",
-                  color: "white",
-                  border: "none",
-                  padding: "2px 6px",
-                  borderRadius: "3px",
-                  cursor: "pointer",
-                  fontSize: "10px",
+                  marginBottom: '8px',
+                  fontSize: '10px',
+                  opacity: 0.8,
                 }}
-                data-test-id="close-test-output-button"
               >
-                ✕
-              </button>
-            </div>
-
-            {generatedTest && (
-              <>
-                <div
-                  style={{
-                    marginBottom: "8px",
-                    fontSize: "10px",
-                    opacity: 0.8,
-                  }}
-                >
-                  <div>Events: {generatedTest.summary.totalEvents}</div>
-                  <div>
-                    Network calls: {generatedTest.summary.totalNetworkCalls}
-                  </div>
-                  <div>
-                    Test IDs: {generatedTest.summary.uniqueTestIds.join(", ")}
-                  </div>
+                <div>Events: {generatedTest.summary.totalEvents}</div>
+                <div>
+                  Network calls: {generatedTest.summary.totalNetworkCalls}
                 </div>
+                <div>
+                  Test IDs: {generatedTest.summary.uniqueTestIds.join(', ')}
+                </div>
+              </div>
 
-                <div style={{ marginBottom: "8px" }}>
-                  <div
-                    style={{ display: "flex", gap: "4px", marginBottom: "4px" }}
+              <div style={{ marginBottom: '8px' }}>
+                <div
+                  style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}
+                >
+                  <button
+                    onClick={() =>
+                      copyToClipboard(generatedTest.testCode, 'Test code')
+                    }
+                    style={{
+                      background: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      flex: 1,
+                    }}
+                    data-test-id="copy-test-code-button"
                   >
-                    <button
-                      onClick={() =>
-                        copyToClipboard(generatedTest.testCode, "Test code")}
-                      style={{
-                        background: "#4CAF50",
-                        color: "white",
-                        border: "none",
-                        padding: "4px 8px",
-                        borderRadius: "3px",
-                        cursor: "pointer",
-                        fontSize: "10px",
-                        flex: 1,
-                      }}
-                      data-test-id="copy-test-code-button"
-                    >
-                      Copy Test
-                    </button>
-                    <button
-                      onClick={() =>
-                        copyToClipboard(
-                          generatedTest.mswHandlers,
-                          "MSW handlers",
-                        )}
-                      style={{
-                        background: "#2196F3",
-                        color: "white",
-                        border: "none",
-                        padding: "4px 8px",
-                        borderRadius: "3px",
-                        cursor: "pointer",
-                        fontSize: "10px",
-                        flex: 1,
-                      }}
-                      data-test-id="copy-msw-handlers-button"
-                    >
-                      Copy MSW
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", gap: "4px" }}>
-                    <button
-                      onClick={() =>
-                        downloadFile(
-                          generatedTest.testCode,
-                          `${testOptions.componentName}.test.jsx`,
-                        )}
-                      style={{
-                        background: "#FF9800",
-                        color: "white",
-                        border: "none",
-                        padding: "4px 8px",
-                        borderRadius: "3px",
-                        cursor: "pointer",
-                        fontSize: "10px",
-                        flex: 1,
-                      }}
-                      data-test-id="download-test-button"
-                    >
-                      Download Test
-                    </button>
-                    <button
-                      onClick={() =>
-                        downloadFile(generatedTest.mswHandlers, "handlers.js")}
-                      style={{
-                        background: "#9C27B0",
-                        color: "white",
-                        border: "none",
-                        padding: "4px 8px",
-                        borderRadius: "3px",
-                        cursor: "pointer",
-                        fontSize: "10px",
-                        flex: 1,
-                      }}
-                      data-test-id="download-msw-button"
-                    >
-                      Download MSW
-                    </button>
-                  </div>
+                    Copy Test
+                  </button>
+                  <button
+                    onClick={() =>
+                      copyToClipboard(generatedTest.mswHandlers, 'MSW handlers')
+                    }
+                    style={{
+                      background: '#2196F3',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      flex: 1,
+                    }}
+                    data-test-id="copy-msw-handlers-button"
+                  >
+                    Copy MSW
+                  </button>
                 </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() =>
+                      downloadFile(
+                        generatedTest.testCode,
+                        `${testOptions.componentName}.test.jsx`
+                      )
+                    }
+                    style={{
+                      background: '#FF9800',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      flex: 1,
+                    }}
+                    data-test-id="download-test-button"
+                  >
+                    Download Test
+                  </button>
+                  <button
+                    onClick={() =>
+                      downloadFile(generatedTest.mswHandlers, 'handlers.js')
+                    }
+                    style={{
+                      background: '#9C27B0',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      flex: 1,
+                    }}
+                    data-test-id="download-msw-button"
+                  >
+                    Download MSW
+                  </button>
+                </div>
+              </div>
 
-                <div
-                  style={{
-                    background: "rgba(255, 255, 255, 0.1)",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    fontSize: "10px",
-                    fontFamily: "monospace",
-                    whiteSpace: "pre-wrap",
-                    maxHeight: "300px",
-                    overflowY: "auto",
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
-                    Test Code Preview:
-                  </div>
-                  {generatedTest.testCode}
+              <div
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
+                  Test Code Preview:
                 </div>
-              </>
-            )}
-          </>
-        )}
+                {generatedTest.testCode}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
