@@ -51,6 +51,7 @@ interface CombinedEvent {
   type:
     | 'click'
     | 'assertion'
+    | 'keyboard'
     | 'network-request'
     | 'network-response'
     | 'network-error';
@@ -64,6 +65,14 @@ interface CombinedEvent {
   };
   status?: number;
   error?: string;
+  // Keyboard-specific properties
+  key?: string;
+  code?: string;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+  keyboardSequence?: string;
 }
 
 interface TestSummary {
@@ -266,6 +275,7 @@ function generateTestCode(
 ): string {
   const imports = [
     "import { render, screen, fireEvent, waitFor } from '@testing-library/react'",
+    "import userEvent from '@testing-library/user-event'",
     "import { rest } from 'msw'",
     "import { server } from '../mocks/server'",
     `import ${componentName} from './${componentName}'`,
@@ -275,8 +285,11 @@ function generateTestCode(
   const testSteps: string[] = [];
   let stepNumber = 1;
 
-  // Add initial render step
-  testSteps.push(`    // Render component
+  // Add initial setup steps
+  testSteps.push(`    // Setup user event
+    const user = userEvent.setup()
+    
+    // Render component
     render(<${componentName} />)`);
 
   // Handle initial network events (before any clicks)
@@ -382,6 +395,11 @@ function generateTestCode(
       event.testId
     }')).toHaveTextContent('${event.elementText.replace(/'/g, "\\'")}')`);
       stepNumber++;
+    } else if (event.type === 'keyboard') {
+      testSteps.push(`
+    // Step ${stepNumber}: Keyboard input${event.testId !== 'document' ? ` on ${event.testId}` : ''}
+    await user.keyboard('${event.keyboardSequence || event.key}')`);
+      stepNumber++;
     }
   }
 
@@ -452,7 +470,7 @@ interface RecordedEvent {
   elementText: string;
   tagName: string;
   elementType?: string | null;
-  type: 'click' | 'assertion';
+  type: 'click' | 'assertion' | 'keyboard';
   position: {
     x: number;
     y: number;
@@ -461,6 +479,14 @@ interface RecordedEvent {
     x: number;
     y: number;
   };
+  // Keyboard-specific properties
+  key?: string;
+  code?: string;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+  keyboardSequence?: string; // user-event formatted string
 }
 
 interface SnapTestContextType {
@@ -579,6 +605,54 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
       current = current.parentElement;
     }
     return null;
+  };
+
+  // Map browser keyboard events to user-event keyboard format
+  const mapKeyToUserEvent = (event: KeyboardEvent): string => {
+    const { key, ctrlKey, shiftKey, altKey, metaKey } = event;
+    
+    // Handle special keys
+    const specialKeyMap: Record<string, string> = {
+      'Enter': '{Enter}',
+      'Escape': '{Escape}',
+      'Tab': '{Tab}',
+      'Backspace': '{Backspace}',
+      'Delete': '{Delete}',
+      'ArrowUp': '{ArrowUp}',
+      'ArrowDown': '{ArrowDown}',
+      'ArrowLeft': '{ArrowLeft}',
+      'ArrowRight': '{ArrowRight}',
+      'Home': '{Home}',
+      'End': '{End}',
+      'PageUp': '{PageUp}',
+      'PageDown': '{PageDown}',
+      ' ': '{Space}',
+    };
+
+    let keySequence = '';
+    
+    // Handle modifier combinations
+    if (ctrlKey || metaKey) {
+      const modifier = metaKey ? 'Meta' : 'Control';
+      if (specialKeyMap[key]) {
+        keySequence = `{${modifier}>}${specialKeyMap[key]}{/${modifier}}`;
+      } else if (key.length === 1) {
+        keySequence = `{${modifier}>}${key.toLowerCase()}{/${modifier}}`;
+      }
+    } else if (shiftKey && key.length === 1 && key.match(/[a-zA-Z]/)) {
+      // Shift + letter (uppercase)
+      keySequence = key.toUpperCase();
+    } else if (altKey) {
+      const altKey = key.length === 1 ? key.toLowerCase() : (specialKeyMap[key] || key);
+      keySequence = `{Alt>}${altKey}{/Alt}`;
+    } else if (specialKeyMap[key]) {
+      keySequence = specialKeyMap[key];
+    } else if (key.length === 1) {
+      // Regular character
+      keySequence = key;
+    }
+    
+    return keySequence;
   };
 
   const isWithinFrameworkUI = (element: Element): boolean => {
@@ -887,6 +961,63 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     [isEventRecording]
   );
 
+  // Keyboard event handler
+  const handleKeyboard = useCallback(
+    (event: Event) => {
+      console.log('handleKeyboard', event.type, event);
+      if (!isEventRecording) return;
+
+      const keyboardEvent = event as KeyboardEvent;
+      const target = keyboardEvent.target as Element;
+
+      // Ignore keyboard events within framework UI panels
+      if (isWithinFrameworkUI(target)) {
+        return;
+      }
+
+      // Skip modifier-only keys
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(keyboardEvent.key)) {
+        return;
+      }
+
+      const keySequence = mapKeyToUserEvent(keyboardEvent);
+      if (!keySequence) return;
+
+      const timestamp = new Date().toISOString();
+      const targetWithTestId = findClosestTestId(target);
+      
+      // Use target element info if available, otherwise use document
+      const testId = targetWithTestId?.getAttribute('data-test-id') || 'document';
+      const elementText = targetWithTestId ? 
+        (targetWithTestId as HTMLElement).innerText?.trim() || '' : '';
+      const tagName = targetWithTestId?.tagName.toLowerCase() || 'document';
+      const elementType = targetWithTestId ? 
+        (targetWithTestId as HTMLInputElement).type || null : null;
+
+      const eventData: RecordedEvent = {
+        id: Date.now() + Math.random(),
+        timestamp,
+        testId,
+        elementText,
+        tagName,
+        elementType,
+        type: 'keyboard' as const,
+        position: { x: 0, y: 0 }, // Not applicable for keyboard
+        clickPosition: { x: 0, y: 0 }, // Not applicable for keyboard
+        key: keyboardEvent.key,
+        code: keyboardEvent.code,
+        ctrlKey: keyboardEvent.ctrlKey,
+        shiftKey: keyboardEvent.shiftKey,
+        altKey: keyboardEvent.altKey,
+        metaKey: keyboardEvent.metaKey,
+        keyboardSequence: keySequence,
+      };
+
+      setRecordedEvents((prev) => [...prev, eventData]);
+    },
+    [isEventRecording, mapKeyToUserEvent, findClosestTestId, isWithinFrameworkUI]
+  );
+
   const startEventRecording = () => setIsEventRecording(true);
   const stopEventRecording = () => setIsEventRecording(false);
   const clearEvents = () => setRecordedEvents([]);
@@ -1192,6 +1323,12 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           capture: true,
           passive: false, // Allow preventDefault for assertions
         });
+
+        // Keyboard events for recording
+        target.addEventListener('keydown', handleKeyboard, {
+          capture: true,
+          passive: false,
+        });
       });
     };
 
@@ -1200,6 +1337,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
         target.removeEventListener('mousemove', handleMouseMove, true);
         target.removeEventListener('mousedown', handleInteraction, true);
         target.removeEventListener('click', handleInteraction, true);
+        target.removeEventListener('keydown', handleKeyboard, true);
       });
     };
 
@@ -1217,6 +1355,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     isEventRecording,
     handleMouseMove,
     handleInteraction,
+    handleKeyboard,
     highlightedElement,
     detectEventTargets,
     overrideEventPropagation,
@@ -1265,9 +1404,11 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             Event Recording (Global)
           </div>
           <div style={{ marginBottom: '8px', fontSize: '10px', opacity: 0.8 }}>
-            Events: {recordedEvents.filter((e) => e.type === 'click').length} |
+            Clicks: {recordedEvents.filter((e) => e.type === 'click').length} |
             Assertions:{' '}
-            {recordedEvents.filter((e) => e.type === 'assertion').length}
+            {recordedEvents.filter((e) => e.type === 'assertion').length} |
+            Keyboard:{' '}
+            {recordedEvents.filter((e) => e.type === 'keyboard').length}
           </div>
           <div style={{ marginBottom: '8px' }}>
             <button
@@ -1426,20 +1567,26 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
               >
                 <div
                   style={{
-                    color: event.type === 'assertion' ? '#FF9800' : '#4CAF50',
+                    color: event.type === 'assertion' ? '#FF9800' : 
+                           event.type === 'keyboard' ? '#2196F3' : '#4CAF50',
                   }}
                 >
-                  {event.type === 'assertion' ? 'assertion' : 'click'}:{' '}
-                  {event.testId}
+                  {event.type === 'keyboard' ? '⌨️' : ''}{event.type}:{' '}
+                  {event.type === 'keyboard' ? (event.keyboardSequence || event.key) : event.testId}
                 </div>
                 <div style={{ opacity: 0.8 }}>
                   time: {new Date(event.timestamp).toLocaleTimeString()}
                 </div>
                 <div style={{ opacity: 0.8 }}>
-                  element: {event.tagName}
+                  {event.type === 'keyboard' ? 'target' : 'element'}: {event.testId === 'document' ? 'document' : event.tagName}
                   {event.elementType ? `[${event.elementType}]` : ''}
                 </div>
-                {event.elementText && (
+                {event.type === 'keyboard' && event.key && (
+                  <div style={{ opacity: 0.8 }}>
+                    key: "{event.key}" {event.ctrlKey || event.metaKey ? '+ modifier' : ''}
+                  </div>
+                )}
+                {event.elementText && event.type !== 'keyboard' && (
                   <div style={{ opacity: 0.8 }}>
                     text: "
                     {event.elementText.length > 30
@@ -1581,7 +1728,15 @@ interface EventHistoryItem {
   elementText: string;
   tagName: string;
   elementType?: string | null;
-  type: 'click' | 'assertion';
+  type: 'click' | 'assertion' | 'keyboard';
+  // Keyboard-specific properties
+  key?: string;
+  code?: string;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+  keyboardSequence?: string;
 }
 
 interface GeneratedTestSuite {
@@ -1687,9 +1842,11 @@ function SnapTestGenerator() {
       {!showOutput ? (
         <>
           <div style={{ marginBottom: '8px', fontSize: '10px', opacity: 0.8 }}>
-            Events: {eventHistory.filter((e) => e.type === 'click').length} |
+            Clicks: {eventHistory.filter((e) => e.type === 'click').length} |
             Assertions:{' '}
             {eventHistory.filter((e) => e.type === 'assertion').length} |
+            Keyboard:{' '}
+            {eventHistory.filter((e) => e.type === 'keyboard').length} |
             Network:{' '}
             {networkHistory.filter((e) => e.type === 'network-request').length}
           </div>

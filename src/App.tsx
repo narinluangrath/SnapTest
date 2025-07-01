@@ -42,6 +42,8 @@ function MockUserApp() {
     { id: 5, label: "Option Epsilon", value: "epsilon" }
   ]);
   const [selectedOption, setSelectedOption] = useState<string>("Select an option...");
+  const [searchText, setSearchText] = useState<string>("");
+  const [messageText, setMessageText] = useState<string>("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -418,6 +420,149 @@ function MockUserApp() {
           >
             Reset Options
           </button>
+        </div>
+      </div>
+
+      {/* Keyboard Input Testing */}
+      <div 
+        data-test-id="keyboard-test-container"
+        style={{
+          position: "relative",
+          marginBottom: "20px",
+          padding: "15px",
+          backgroundColor: "white",
+          borderRadius: "8px",
+          border: "1px solid #eee"
+        }}
+      >
+        <h3 data-test-id="keyboard-test-title" style={{ marginTop: 0, marginBottom: "10px", color: "#333" }}>
+          Keyboard Input Testing
+        </h3>
+        <p data-test-id="keyboard-test-description" style={{ fontSize: "14px", color: "#666", marginBottom: "15px" }}>
+          Test keyboard recording with various input types and key combinations
+        </p>
+        
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "15px" }}>
+          <div>
+            <label 
+              data-test-id="search-input-label"
+              style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "14px" }}
+            >
+              Search Input:
+            </label>
+            <input
+              data-test-id="search-input"
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Type here and press Enter to search..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  console.log('Search triggered:', searchText);
+                }
+              }}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid #ced4da",
+                borderRadius: "4px",
+                fontSize: "14px"
+              }}
+            />
+            {searchText && (
+              <div data-test-id="search-preview" style={{ marginTop: "5px", fontSize: "12px", color: "#666" }}>
+                Preview: "{searchText}"
+              </div>
+            )}
+          </div>
+          
+          <div>
+            <label 
+              data-test-id="message-input-label"
+              style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "14px" }}
+            >
+              Message Input:
+            </label>
+            <textarea
+              data-test-id="message-input"
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              placeholder="Type a message here... Try Ctrl+A to select all"
+              rows={3}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid #ced4da",
+                borderRadius: "4px",
+                fontSize: "14px",
+                resize: "vertical"
+              }}
+            />
+          </div>
+        </div>
+        
+        <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+          <button
+            data-test-id="clear-search-button"
+            onClick={() => setSearchText("")}
+            style={{
+              padding: "6px 12px",
+              backgroundColor: "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px"
+            }}
+          >
+            Clear Search
+          </button>
+          <button
+            data-test-id="clear-message-button"
+            onClick={() => setMessageText("")}
+            style={{
+              padding: "6px 12px",
+              backgroundColor: "#dc3545",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px"
+            }}
+          >
+            Clear Message
+          </button>
+          <button
+            data-test-id="copy-to-search-button"
+            onClick={() => setSearchText(messageText)}
+            disabled={!messageText}
+            style={{
+              padding: "6px 12px",
+              backgroundColor: messageText ? "#28a745" : "#ccc",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: messageText ? "pointer" : "not-allowed",
+              fontSize: "12px"
+            }}
+          >
+            Copy Message to Search
+          </button>
+        </div>
+        
+        <div style={{ fontSize: "12px", color: "#999" }}>
+          <div data-test-id="keyboard-tips">
+            <strong>Test these keyboard interactions:</strong>
+          </div>
+          <ul style={{ margin: "5px 0", paddingLeft: "20px" }}>
+            <li>Type regular text in the inputs</li>
+            <li>Press Enter in the search field</li>
+            <li>Use Ctrl+A (Cmd+A on Mac) to select all text</li>
+            <li>Use Ctrl+C and Ctrl+V to copy/paste</li>
+            <li>Try Tab to navigate between fields</li>
+            <li>Use arrow keys to move cursor</li>
+            <li>Test Escape, Backspace, Delete keys</li>
+          </ul>
         </div>
       </div>
 
