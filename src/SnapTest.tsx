@@ -166,10 +166,22 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
   });
 
   const handlers: string[] = [];
+  const mockDataFunctions: string[] = [];
+  let mockFunctionCounter = 1;
+
   defaultHandlers.forEach((handler) => {
     const hasBody =
       handler.requestBody !== null &&
       ['post', 'put', 'patch'].includes(handler.method);
+
+    // Generate mock data function
+    const mockFunctionName = `getMockData${mockFunctionCounter}`;
+    mockDataFunctions.push(`
+// Mock data for ${handler.method.toUpperCase()} ${handler.fullPath}
+function ${mockFunctionName}() {
+  return ${JSON.stringify(handler.data, null, 2)};
+}`);
+    mockFunctionCounter++;
 
     if (hasBody) {
       handlers.push(`
@@ -178,7 +190,7 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
     if (body === ${JSON.stringify(handler.requestBody)}) {
       return res(
         ctx.status(${handler.status}),
-        ctx.json(${JSON.stringify(handler.data, null, 4)})
+        ctx.json(${mockFunctionName}())
       )
     }
     return res(ctx.status(400), ctx.text('Request body mismatch'))
@@ -188,7 +200,7 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
   rest.${handler.method}('*${handler.fullPath}', (req, res, ctx) => {
     return res(
       ctx.status(${handler.status}),
-      ctx.json(${JSON.stringify(handler.data, null, 4)})
+      ctx.json(${mockFunctionName}())
     )
   })`);
     }
@@ -196,7 +208,9 @@ function generateMSWHandlers(networkHistory: NetworkHistoryItem[]): string {
 
   return `import { rest } from 'msw'
 
-export const handlers = [${handlers.join(',')}\n]`;
+export const handlers = [${handlers.join(',')}\n]
+
+${mockDataFunctions.join('\n')}`;
 }
 
 interface NetworkState {
@@ -283,7 +297,9 @@ function generateTestCode(
 
   const networkStates = correlateNetworkStates(combinedEvents);
   const testSteps: string[] = [];
+  const mockDataFunctions: string[] = [];
   let stepNumber = 1;
+  let mockFunctionCounter = 1;
 
   // Add initial setup steps
   testSteps.push(`    // Setup user event
@@ -309,13 +325,22 @@ function generateTestCode(
       const hasBody =
         requestBody !== null && ['post', 'put', 'patch'].includes(method);
 
+      // Generate mock data function
+      const mockFunctionName = `getMockData${mockFunctionCounter}`;
+      mockDataFunctions.push(`
+// Mock data for ${method.toUpperCase()} ${fullPath}
+function ${mockFunctionName}() {
+  return ${JSON.stringify(networkEvent.response?.data, null, 2)};
+}`);
+      mockFunctionCounter++;
+
       if (hasBody) {
         testSteps.push(`      rest.${method}('*${fullPath}', async (req, res, ctx) => {
         const body = await req.text()
         if (body === ${JSON.stringify(requestBody)}) {
           return res(
             ctx.status(${networkEvent.status}),
-            ctx.json(${JSON.stringify(networkEvent.response?.data, null, 8)})
+            ctx.json(${mockFunctionName}())
           )
         }
         return res(ctx.status(400), ctx.text('Request body mismatch'))
@@ -324,7 +349,7 @@ function generateTestCode(
         testSteps.push(`      rest.${method}('*${fullPath}', (req, res, ctx) => {
         return res(
           ctx.status(${networkEvent.status}),
-          ctx.json(${JSON.stringify(networkEvent.response?.data, null, 8)})
+          ctx.json(${mockFunctionName}())
         )
       })${index < initialNetworkState.networkEvents.length - 1 ? ',' : ''}`);
       }
@@ -356,6 +381,15 @@ function generateTestCode(
           const hasBody =
             requestBody !== null && ['post', 'put', 'patch'].includes(method);
 
+          // Generate mock data function
+          const mockFunctionName = `getMockData${mockFunctionCounter}`;
+          mockDataFunctions.push(`
+// Mock data for ${method.toUpperCase()} ${fullPath}
+function ${mockFunctionName}() {
+  return ${JSON.stringify(networkEvent.response?.data, null, 2)};
+}`);
+          mockFunctionCounter++;
+
           if (hasBody) {
             testSteps.push(`    server.use(
       rest.${method}('*${fullPath}', async (req, res, ctx) => {
@@ -363,7 +397,7 @@ function generateTestCode(
         if (body === ${JSON.stringify(requestBody)}) {
           return res(
             ctx.status(${networkEvent.status}),
-            ctx.json(${JSON.stringify(networkEvent.response?.data, null, 6)})
+            ctx.json(${mockFunctionName}())
           )
         }
         return res(ctx.status(400), ctx.text('Request body mismatch'))
@@ -374,7 +408,7 @@ function generateTestCode(
       rest.${method}('*${fullPath}', (req, res, ctx) => {
         return res(
           ctx.status(${networkEvent.status}),
-          ctx.json(${JSON.stringify(networkEvent.response?.data, null, 6)})
+          ctx.json(${mockFunctionName}())
         )
       })
     )`);
@@ -421,7 +455,9 @@ describe('${describe}', () => {
   test('${testName}', async () => {
 ${testSteps.join('\n')}
   })
-})`;
+})
+
+${mockDataFunctions.join('\n')}`;
 
   return testCode;
 }
