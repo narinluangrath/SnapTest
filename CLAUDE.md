@@ -3,9 +3,7 @@
 ## Overview
 
 SnapTest is a lightning-fast, complete testing framework built with React,
-TypeScript, Vite and Deno. SnapTest records user interactions, assertions, and
-network requests to automatically generate React Testing Library tests with MSW
-v1 mocks in a snap!
+TypeScript, Vite and Deno. SnapTest records user interactions (clicks, keyboard input, assertions), and network requests to automatically generate React Testing Library tests with MSW v1 mocks and @testing-library/user-event in a snap!
 
 ## ✅ Completed Implementation
 
@@ -20,9 +18,10 @@ SnapTest is **fully functional** and includes all core features:
 
 2. **Interaction Recording**
    - **Click Recording**: Captures regular clicks on elements with test IDs
+   - **Keyboard Recording**: Automatic capture of all keyboard input (typing, Enter, Tab, Ctrl+A, etc.)
    - **Assertion Recording**: Ctrl+Click to record text content assertions
    - Real-time event logging with timestamps and element details
-   - Color-coded events (green for clicks, orange for assertions)
+   - Color-coded events (green for clicks, blue for keyboard with ⌨️ icon, orange for assertions)
 
 3. **Network Request Interception**
    - Automatic fetch() interception during recording
@@ -32,6 +31,8 @@ SnapTest is **fully functional** and includes all core features:
 
 4. **Test Code Generation**
    - Complete React Testing Library test generation
+   - **@testing-library/user-event integration** with `const user = userEvent.setup()`
+   - **Keyboard interactions**: `await user.keyboard('text{Enter}')`, `await user.keyboard('{Control>}a{/Control}')`
    - MSW v1 mock handlers with request/response matching
    - Async-friendly `await screen.findByTestId()` queries
    - Proper test structure with setup/teardown
@@ -74,7 +75,9 @@ src/
 **Generated Tests Include:**
 
 - Component rendering with proper imports
+- **@testing-library/user-event** setup and imports
 - Sequential click events with `fireEvent.click()`
+- **Keyboard interactions** with `await user.keyboard()` for realistic user input
 - Text content assertions with `toHaveTextContent()`
 - Network mocking with MSW v1 `rest.method()` handlers
 - Async waiting with `waitFor()` and `findByTestId()`
@@ -89,7 +92,10 @@ src/
 ### 🎯 Recording Workflow
 
 1. **Start Recording**: Click "Start Recording" in event panel
-2. **Interact**: Click elements to record interactions
+2. **Interact**: 
+   - Click elements to record interactions
+   - Type in input fields and use keyboard shortcuts
+   - Press Enter, Tab, arrow keys, Ctrl+A, etc.
 3. **Assert**: Ctrl+Click elements to record text assertions
 4. **Network**: Toggle network recording to capture API calls
 5. **Generate**: Configure test name/component and generate test code
@@ -100,6 +106,8 @@ src/
 **MockUserApp** demonstrates:
 
 - User profile fetching from JSONPlaceholder API
+- **Keyboard input testing** with search fields and text areas
+- **Disappearing dropdown** component for testing edge cases
 - Dynamic content loading with loading states
 - State-aware test IDs (`random-user-button-ready` vs `loading`)
 - Expandable post lists with individual test IDs
@@ -111,6 +119,7 @@ src/
 - **Vite** - Build tool and dev server
 - **Deno** - JavaScript runtime (instead of Node.js)
 - **MSW v1** - Network request mocking (compatible with generated tests)
+- **@testing-library/user-event** - Realistic user interaction simulation
 - **JSONPlaceholder** - Mock API for demo data
 - **React Testing Library** - Generated test framework
 

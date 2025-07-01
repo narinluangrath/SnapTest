@@ -1,7 +1,6 @@
 # SnapTest ⚡
 
-A lightning-fast React testing framework that records user interactions and
-automatically generates React Testing Library tests with MSW mocks.
+A lightning-fast React testing framework that records user interactions (clicks, keyboard input, and assertions) and automatically generates React Testing Library tests with MSW mocks.
 
 ## 🚀 Quick Start
 
@@ -43,6 +42,13 @@ That's it! The framework will overlay recording controls on your app.
 - Click any element with a `data-test-id` to record the interaction
 - Events appear in the top-right panel with timestamps
 
+**Keyboard Recording:**
+
+- All keyboard input is automatically captured during recording
+- Type text, use Enter, Tab, arrow keys, and key combinations
+- Special keys and modifiers (Ctrl+A, Cmd+V) are properly recorded
+- Keyboard events appear with ⌨️ icon in blue in the event log
+
 **Assertion Recording:**
 
 - **Ctrl+Click** any element to record a text content assertion
@@ -67,7 +73,9 @@ That's it! The framework will overlay recording controls on your app.
 **Complete React Testing Library tests with:**
 
 - Proper component rendering and imports
+- **@testing-library/user-event** for realistic interactions
 - Sequential click events: `fireEvent.click(await screen.findByTestId('...'))`
+- **Keyboard interactions**: `await user.keyboard('text{Enter}')`, `await user.keyboard('{Control>}a{/Control}')`
 - Text assertions:
   `expect(await screen.findByTestId('...')).toHaveTextContent('...')`
 - MSW v1 mocks with request/response matching
@@ -77,6 +85,7 @@ That's it! The framework will overlay recording controls on your app.
 
 ```typescript
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { rest } from 'msw'
 import { server } from '../mocks/server'
 import UserProfile from './UserProfile'
@@ -94,13 +103,25 @@ describe('UserProfile Integration Tests', () => {
     server.close()
   })
 
-  test('should load user data when button clicked', async () => {
+  test('should handle user interactions correctly', async () => {
+    // Setup user event
+    const user = userEvent.setup()
+    
     // Render component
     render(<UserProfile />)
 
-    // Step 1: Setup network state BEFORE click
+    // Step 1: Click search input
+    fireEvent.click(await screen.findByTestId('search-input'))
+
+    // Step 2: Type search query
+    await user.keyboard('john doe')
+
+    // Step 3: Press Enter to search
+    await user.keyboard('{Enter}')
+
+    // Step 4: Setup network state BEFORE load button click
     server.use(
-      rest.get('*/api/users/1', (req, res, ctx) => {
+      rest.get('*/api/users', (req, res, ctx) => {
         return res(
           ctx.status(200),
           ctx.json({
@@ -112,14 +133,14 @@ describe('UserProfile Integration Tests', () => {
       })
     )
 
-    // Step 2: Click load-user-button
+    // Step 5: Click load-user-button
     fireEvent.click(await screen.findByTestId('load-user-button'))
 
-    // Step 3: Assert user-name text content
+    // Step 6: Assert user-name text content
     expect(await screen.findByTestId('user-name')).toHaveTextContent('John Doe')
 
-    // Step 4: Assert user-email text content
-    expect(await screen.findByTestId('user-email')).toHaveTextContent('john@example.com')
+    // Step 7: Use keyboard shortcut to select all
+    await user.keyboard('{Control>}a{/Control}')
   })
 })
 ```
@@ -144,8 +165,8 @@ describe('UserProfile Integration Tests', () => {
 
 **Event Recording Panel (Top-Left):**
 
-- Start/Stop recording clicks and assertions
-- Event and assertion counters
+- Start/Stop recording clicks, keyboard input, and assertions
+- Counters for clicks, assertions, and keyboard events
 - Clear recorded events
 
 **Network Recording Panel (Top-Center):**
@@ -170,7 +191,11 @@ describe('UserProfile Integration Tests', () => {
 
 1. **Add test IDs** to your components: `data-test-id="my-button"`
 2. **Start recording** in both event and network panels
-3. **Interact** with your app (click elements, trigger API calls)
+3. **Interact** with your app:
+   - Click elements to record interactions
+   - Type in input fields and use keyboard shortcuts
+   - Press Enter, Tab, arrow keys, and special combinations
+   - Trigger API calls through interactions
 4. **Add assertions** by Ctrl+clicking elements to verify text content
 5. **Generate tests** with your recorded interactions
 6. **Export** the complete test suite and MSW handlers
@@ -209,8 +234,9 @@ describe('UserProfile Integration Tests', () => {
 This repository includes a demo app (`MockUserApp`) that showcases:
 
 - User profile fetching from JSONPlaceholder API
-- Dynamic loading states
-- State-aware test IDs
+- **Keyboard input testing** with search fields and text areas
+- **Disappearing dropdown** component for edge case testing
+- Dynamic loading states with state-aware test IDs
 - Expandable content sections
 - Error handling and retry logic
 
@@ -232,10 +258,10 @@ deno task dev
 **Benefits:**
 
 - **Zero setup**: Just copy one file and wrap your app
-- **Real interactions**: Record actual user workflows
-- **Complete tests**: Generated tests include mocks, assertions, and proper
-  async handling
+- **Real interactions**: Record actual user workflows (clicks, typing, key combinations)
+- **Complete tests**: Generated tests include mocks, assertions, keyboard interactions, and proper async handling
 - **MSW integration**: Industry-standard request mocking
+- **user-event compatibility**: Generated tests use @testing-library/user-event for realistic interactions
 - **Visual feedback**: See exactly what's being recorded in real-time
 
 Start snapping your integration tests today with SnapTest! ⚡🎉
