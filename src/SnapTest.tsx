@@ -283,6 +283,62 @@ function correlateNetworkStates(
   return networkStates;
 }
 
+function consolidateKeyboardEvents(combinedEvents: CombinedEvent[]): CombinedEvent[] {
+  const consolidatedEvents: CombinedEvent[] = [];
+  let i = 0;
+
+  while (i < combinedEvents.length) {
+    const event = combinedEvents[i];
+
+    if (event.type === 'keyboard') {
+      // Start collecting consecutive keyboard events
+      const keyboardSequence: string[] = [];
+      const keyboardEvents: CombinedEvent[] = [event];
+      let currentTestId = event.testId;
+
+      // Add the first keyboard event
+      keyboardSequence.push(event.keyboardSequence || event.key || '');
+
+      // Look ahead for consecutive keyboard events on the same element
+      let j = i + 1;
+      while (j < combinedEvents.length && combinedEvents[j].type === 'keyboard') {
+        const nextKeyboardEvent = combinedEvents[j];
+        
+        // Only consolidate if it's on the same element (testId)
+        if (nextKeyboardEvent.testId === currentTestId) {
+          keyboardSequence.push(nextKeyboardEvent.keyboardSequence || nextKeyboardEvent.key || '');
+          keyboardEvents.push(nextKeyboardEvent);
+          j++;
+        } else {
+          break;
+        }
+      }
+
+      if (keyboardEvents.length > 1) {
+        // Create a consolidated keyboard event
+        const consolidatedEvent: CombinedEvent = {
+          ...event,
+          id: `consolidated-${event.id}`,
+          keyboardSequence: keyboardSequence.join(''),
+          elementText: `${keyboardEvents.length} keyboard events consolidated`,
+        };
+        consolidatedEvents.push(consolidatedEvent);
+      } else {
+        // Single keyboard event, keep as is
+        consolidatedEvents.push(event);
+      }
+
+      i = j; // Skip past all processed keyboard events
+    } else {
+      // Non-keyboard event, keep as is
+      consolidatedEvents.push(event);
+      i++;
+    }
+  }
+
+  return consolidatedEvents;
+}
+
 function generateTestCode(
   combinedEvents: CombinedEvent[],
   { testName, componentName, describe }: Required<TestOptions>
@@ -295,7 +351,9 @@ function generateTestCode(
     `import ${componentName} from './${componentName}'`,
   ];
 
-  const networkStates = correlateNetworkStates(combinedEvents);
+  // Consolidate consecutive keyboard events before processing
+  const consolidatedEvents = consolidateKeyboardEvents(combinedEvents);
+  const networkStates = correlateNetworkStates(consolidatedEvents);
   const testSteps: string[] = [];
   const mockDataFunctions: string[] = [];
   let stepNumber = 1;
@@ -359,7 +417,7 @@ function ${mockFunctionName}() {
     stepNumber++;
   }
 
-  for (const event of combinedEvents) {
+  for (const event of consolidatedEvents) {
     if (event.type === 'click') {
       // FIRST: Setup mocks for network state that this click will trigger
       const associatedNetworkState = networkStates.find(
