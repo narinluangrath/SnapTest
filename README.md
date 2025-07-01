@@ -113,7 +113,7 @@ describe('UserProfile Integration Tests', () => {
     // Step 1: Click search input
     fireEvent.click(await screen.findByTestId('search-input'))
 
-    // Step 2: Type search query
+    // Step 2: Type search query (8 keyboard events consolidated)
     await user.keyboard('john doe')
 
     // Step 3: Press Enter to search
@@ -124,11 +124,7 @@ describe('UserProfile Integration Tests', () => {
       rest.get('*/api/users', (req, res, ctx) => {
         return res(
           ctx.status(200),
-          ctx.json({
-            "id": 1,
-            "name": "John Doe",
-            "email": "john@example.com"
-          })
+          ctx.json(getMockData1())
         )
       })
     )
@@ -143,6 +139,15 @@ describe('UserProfile Integration Tests', () => {
     await user.keyboard('{Control>}a{/Control}')
   })
 })
+
+// Mock data for GET /api/users
+function getMockData1() {
+  return {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  };
+}
 ```
 
 ## 🏗️ Framework Architecture
