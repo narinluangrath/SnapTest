@@ -722,7 +722,6 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
 
   const handleMouseMove = useCallback(
     (event: Event) => {
-      console.log('handleMouseMove', event);
       const mouseEvent = event as MouseEvent;
       const target = mouseEvent.target as Element;
 
@@ -781,7 +780,6 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Multi-type event handler for maximum capture reliability
   const handleInteraction = useCallback(
     (event: Event) => {
-      console.log('handleInteraction', event.type, event);
       if (!isEventRecording) return;
 
       const mouseEvent = event as MouseEvent;
@@ -964,7 +962,6 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Keyboard event handler
   const handleKeyboard = useCallback(
     (event: Event) => {
-      console.log('handleKeyboard', event.type, event);
       if (!isEventRecording) return;
 
       const keyboardEvent = event as KeyboardEvent;
