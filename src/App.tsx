@@ -33,6 +33,15 @@ function MockUserApp() {
   const [selectedUserId, setSelectedUserId] = useState(1);
   const [postsExpanded, setPostsExpanded] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [availableOptions, setAvailableOptions] = useState([
+    { id: 1, label: "Option Alpha", value: "alpha" },
+    { id: 2, label: "Option Beta", value: "beta" },
+    { id: 3, label: "Option Gamma", value: "gamma" },
+    { id: 4, label: "Option Delta", value: "delta" },
+    { id: 5, label: "Option Epsilon", value: "epsilon" }
+  ]);
+  const [selectedOption, setSelectedOption] = useState<string>("Select an option...");
 
   const fetchData = async () => {
     setLoading(true);
@@ -119,6 +128,25 @@ function MockUserApp() {
     };
     
     xhr.send();
+  };
+
+  const handleDropdownSelect = (option: { id: number; label: string; value: string }) => {
+    setSelectedOption(option.label);
+    setShowDropdown(false);
+    // Remove the selected option from available options (causing DOM disappearance)
+    setAvailableOptions(prev => prev.filter(opt => opt.id !== option.id));
+  };
+
+  const resetDropdown = () => {
+    setAvailableOptions([
+      { id: 1, label: "Option Alpha", value: "alpha" },
+      { id: 2, label: "Option Beta", value: "beta" },
+      { id: 3, label: "Option Gamma", value: "gamma" },
+      { id: 4, label: "Option Delta", value: "delta" },
+      { id: 5, label: "Option Epsilon", value: "epsilon" }
+    ]);
+    setSelectedOption("Select an option...");
+    setShowDropdown(false);
   };
 
   if (loading) {
@@ -269,6 +297,126 @@ function MockUserApp() {
             }}
           >
             Test Modal
+          </button>
+        </div>
+      </div>
+
+      {/* Disappearing Dropdown for Testing Edge Cases */}
+      <div 
+        data-test-id="dropdown-container"
+        style={{
+          position: "relative",
+          marginBottom: "20px",
+          padding: "15px",
+          backgroundColor: "white",
+          borderRadius: "8px",
+          border: "1px solid #eee"
+        }}
+      >
+        <h3 data-test-id="dropdown-title" style={{ marginTop: 0, marginBottom: "10px", color: "#333" }}>
+          Disappearing Dropdown Test
+        </h3>
+        <p data-test-id="dropdown-description" style={{ fontSize: "14px", color: "#666", marginBottom: "15px" }}>
+          Select an option to make it disappear from the DOM (tests edge case handling)
+        </p>
+        
+        <div style={{ position: "relative", display: "inline-block", minWidth: "200px" }}>
+          <button
+            data-test-id="dropdown-trigger"
+            onClick={() => setShowDropdown(!showDropdown)}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: "#f8f9fa",
+              border: "1px solid #ced4da",
+              borderRadius: "4px",
+              cursor: "pointer",
+              width: "100%",
+              textAlign: "left",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            <span data-test-id="dropdown-selected-text">{selectedOption}</span>
+            <span data-test-id="dropdown-arrow" style={{ fontSize: "12px" }}>
+              {showDropdown ? "▲" : "▼"}
+            </span>
+          </button>
+          
+          {showDropdown && (
+            <div
+              data-test-id="dropdown-menu"
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
+                backgroundColor: "white",
+                border: "1px solid #ced4da",
+                borderTop: "none",
+                borderRadius: "0 0 4px 4px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                zIndex: 1000,
+                maxHeight: "200px",
+                overflowY: "auto"
+              }}
+            >
+              {availableOptions.length === 0 ? (
+                <div 
+                  data-test-id="dropdown-no-options"
+                  style={{
+                    padding: "10px 15px",
+                    color: "#999",
+                    fontStyle: "italic"
+                  }}
+                >
+                  No options remaining
+                </div>
+              ) : (
+                availableOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    data-test-id={`dropdown-option-${option.value}`}
+                    onClick={() => handleDropdownSelect(option)}
+                    style={{
+                      padding: "10px 15px",
+                      cursor: "pointer",
+                      borderBottom: "1px solid #f0f0f0",
+                      transition: "background-color 0.2s"
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.target as HTMLElement).style.backgroundColor = "#f8f9fa";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.target as HTMLElement).style.backgroundColor = "white";
+                    }}
+                  >
+                    {option.label}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+        
+        <div style={{ marginTop: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span data-test-id="dropdown-remaining-count" style={{ fontSize: "12px", color: "#999" }}>
+            Options remaining: {availableOptions.length}
+          </span>
+          <button
+            data-test-id="dropdown-reset-button"
+            onClick={resetDropdown}
+            style={{
+              padding: "5px 10px",
+              backgroundColor: "#17a2b8",
+              color: "white",
+              border: "none",
+              borderRadius: "3px",
+              cursor: "pointer",
+              fontSize: "12px"
+            }}
+          >
+            Reset Options
           </button>
         </div>
       </div>

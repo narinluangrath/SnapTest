@@ -592,68 +592,11 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     return false;
   };
 
-  // Enhanced portal and modal detection
+  // Simplified event target detection - just use document to capture all events
   const detectEventTargets = useCallback(() => {
     const targets = new Set<Element>();
-
-    // Always include document and body
+    // Only use document to capture all events with event delegation
     targets.add(document.documentElement);
-    targets.add(document.body);
-
-    // Look for common portal containers
-    const portalSelectors = [
-      '[data-testid*="portal"]',
-      '[class*="portal"]',
-      '[class*="modal"]',
-      '[class*="dialog"]',
-      '[class*="popover"]',
-      '[class*="tooltip"]',
-      '[class*="overlay"]',
-      '[role="dialog"]',
-      '[role="alertdialog"]',
-      '[role="tooltip"]',
-      '[aria-modal="true"]',
-      // React Portal common containers
-      '#portal-root',
-      '#modal-root',
-      '#tooltip-root',
-      '.ReactModalPortal',
-      // Material-UI portals
-      '[class*="MuiPortal"]',
-      '[class*="MuiModal"]',
-      '[class*="MuiDialog"]',
-      // Ant Design
-      '[class*="ant-modal"]',
-      '[class*="ant-dropdown"]',
-      '[class*="ant-select-dropdown"]',
-      // Other common portal patterns
-      'body > div[class*="modal"]',
-      'body > div[class*="dialog"]',
-      'body > div[style*="position: fixed"]',
-      'body > div[style*="position: absolute"]',
-    ];
-
-    portalSelectors.forEach((selector) => {
-      try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach((el) => targets.add(el));
-      } catch (e) {
-        // Ignore invalid selectors
-      }
-    });
-
-    // Also look for any direct children of body that might be portals
-    Array.from(document.body.children).forEach((child) => {
-      const style = window.getComputedStyle(child);
-      if (
-        style.position === 'fixed' ||
-        style.position === 'absolute' ||
-        parseInt(style.zIndex, 10) > 1000
-      ) {
-        targets.add(child);
-      }
-    });
-
     eventTargetsRef.current = targets;
   }, []);
 
@@ -764,7 +707,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
   // Multi-type event handler for maximum capture reliability
   const handleInteraction = useCallback(
     (event: Event) => {
-      console.log('handleInteraction', event);
+      console.log('handleInteraction', event.type, event);
       if (!isEventRecording) return;
 
       const mouseEvent = event as MouseEvent;
@@ -801,6 +744,7 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
             rect,
             timestamp: Date.now(),
           };
+
         }
         return; // Don't record on mousedown, just cache
       }
@@ -1226,50 +1170,9 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     // Initial detection of event targets
     detectEventTargets();
 
-    // Set up MutationObserver to detect new DOM elements (like modals/portals)
-    const mutationObserver = new MutationObserver((mutations) => {
-      let shouldRedetect = false;
+    // No need for mutation observer with simplified approach
 
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = node as Element;
-              // Check if this might be a modal/portal container
-              const style = window.getComputedStyle(element);
-              if (
-                style.position === 'fixed' ||
-                style.position === 'absolute' ||
-                parseInt(style.zIndex, 10) > 1000 ||
-                element.getAttribute('role') === 'dialog' ||
-                element.getAttribute('aria-modal') === 'true' ||
-                element.className.includes('modal') ||
-                element.className.includes('dialog') ||
-                element.className.includes('portal') ||
-                element.className.includes('overlay')
-              ) {
-                shouldRedetect = true;
-              }
-            }
-          });
-        }
-      });
-
-      if (shouldRedetect) {
-        setTimeout(detectEventTargets, 100); // Small delay to let DOM settle
-      }
-    });
-
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    mutationObserverRef.current = mutationObserver;
-
-    // Add multiple event types for maximum coverage
-    const eventTypes = ['click', 'mousedown', 'pointerdown'];
-
+    // Add event listeners for click detection
     const addEventListeners = () => {
       eventTargetsRef.current.forEach((target) => {
         // Mousemove for highlighting
@@ -1278,31 +1181,26 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
           capture: true,
         });
 
-        // Multiple interaction events for click detection
-        eventTypes.forEach((eventType) => {
-          target.addEventListener(eventType, handleInteraction, {
-            capture: true,
-            passive: false, // Allow preventDefault for assertions
-          });
+        // Only mousedown for caching element info before it disappears
+        target.addEventListener('mousedown', handleInteraction, {
+          capture: true,
+          passive: false,
         });
-      });
 
-      // Also add to window for absolute coverage
-      window.addEventListener('click', handleInteraction, {
-        capture: true,
-        passive: false,
+        // Click for actual recording
+        target.addEventListener('click', handleInteraction, {
+          capture: true,
+          passive: false, // Allow preventDefault for assertions
+        });
       });
     };
 
     const removeEventListeners = () => {
       eventTargetsRef.current.forEach((target) => {
         target.removeEventListener('mousemove', handleMouseMove, true);
-        eventTypes.forEach((eventType) => {
-          target.removeEventListener(eventType, handleInteraction, true);
-        });
+        target.removeEventListener('mousedown', handleInteraction, true);
+        target.removeEventListener('click', handleInteraction, true);
       });
-
-      window.removeEventListener('click', handleInteraction, true);
     };
 
     addEventListeners();
@@ -1310,9 +1208,6 @@ function SnapTestProvider({ children }: SnapTestProviderProps) {
     return () => {
       removeEventListeners();
       restoreEventPropagation();
-      if (mutationObserverRef.current) {
-        mutationObserverRef.current.disconnect();
-      }
       if (highlightedElement) {
         (highlightedElement as HTMLElement).style.outline = '';
         (highlightedElement as HTMLElement).style.outlineOffset = '';
